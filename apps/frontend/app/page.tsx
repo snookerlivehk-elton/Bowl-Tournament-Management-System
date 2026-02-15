@@ -86,6 +86,7 @@ export default function Page() {
           flow,
         }),
       }).then(r => r.json())
+      const failed: string[] = []
       for (const f of files) {
         const sign = await fetch(`${API}/api/uploads/sign`, {
           method: 'POST',
@@ -97,7 +98,10 @@ export default function Page() {
         form.append('Content-Type', f.type)
         form.append('file', f)
         const res = await fetch(sign.url, { method: 'POST', body: form })
-        if (!res.ok) throw new Error('上傳失敗')
+        if (!res.ok) {
+          failed.push(f.name)
+          continue
+        }
         await fetch(`${API}/api/uploads/complete`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -111,6 +115,7 @@ export default function Page() {
         })
       }
       setMessage('已儲存')
+      if (failed.length) setToast(`附件上傳失敗：${failed.join(', ')}`)
       setToast(flow === 'expense' ? '支出已儲存' : '收入已儲存')
       setTimeout(() => setToast(''), 3000)
       await fetchRecent()
@@ -125,6 +130,7 @@ export default function Page() {
       setMessage(e.message || '發生錯誤')
     } finally {
       setSaving(false)
+      setConfirmOpen(false)
     }
   }
   async function fetchRecent() {
