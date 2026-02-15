@@ -8,8 +8,10 @@ const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 export default function Page() {
   const [date, setDate] = useState<string>(new Date().toISOString().slice(0, 10))
   const [content, setContent] = useState('')
-  const [amount, setAmount] = useState<number>(0)
-  const [amountStr, setAmountStr] = useState('')
+  const [amountE, setAmountE] = useState<number>(0)
+  const [amountEStr, setAmountEStr] = useState('')
+  const [amountI, setAmountI] = useState<number>(0)
+  const [amountIStr, setAmountIStr] = useState('')
   const [note, setNote] = useState('')
   const [categoryId, setCategoryId] = useState<number | null>(null)
   const [companyId, setCompanyId] = useState<number | null>(null)
@@ -24,7 +26,8 @@ export default function Page() {
   const [message, setMessage] = useState('')
   const [toast, setToast] = useState('')
   const [items, setItems] = useState<any[]>([])
-  const amountInvalid = isNaN(amount) || amount <= 0
+  const amountInvalidE = isNaN(amountE) || amountE <= 0
+  const amountInvalidI = isNaN(amountI) || amountI <= 0
   const [flowTab, setFlowTab] = useState<'expense' | 'income'>('expense')
   const [isMobile, setIsMobile] = useState(false)
 
@@ -63,7 +66,9 @@ export default function Page() {
     setSaving(true)
     setMessage('')
     try {
-      if (amountInvalid) throw new Error('金額不合法')
+      const amt = flow === 'expense' ? amountE : amountI
+      const amtInvalid = flow === 'expense' ? amountInvalidE : amountInvalidI
+      if (amtInvalid) throw new Error('金額不合法')
       const entry = await fetch(`${API}/api/entries`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -74,7 +79,7 @@ export default function Page() {
           handlerId,
           fundId,
           content,
-          amount: amount,
+          amount: amt,
           note,
           flow,
         }),
@@ -108,8 +113,10 @@ export default function Page() {
       setTimeout(() => setToast(''), 3000)
       await fetchRecent()
       setContent('')
-      setAmount(0)
-      setAmountStr('')
+      setAmountE(0)
+      setAmountEStr('')
+      setAmountI(0)
+      setAmountIStr('')
       setNote('')
       setFiles([])
     } catch (e: any) {
@@ -196,18 +203,18 @@ export default function Page() {
               inputMode="decimal"
               pattern="[0-9]*"
               placeholder="請輸入金額"
-              value={amountStr}
+              value={amountEStr}
               onChange={e => {
                 const raw = e.target.value.replace(/[^\d.\-]/g, '')
-                setAmountStr(raw)
+                setAmountEStr(raw)
                 const n = Number(raw || 0)
-                setAmount(n)
+                setAmountE(n)
               }}
-            className={amountInvalid && amountStr ? 'invalid' : ''}
+            className={amountInvalidE && amountEStr ? 'invalid' : ''}
             />
-            <div className="hint">預覽：${new Intl.NumberFormat('zh-HK',{maximumFractionDigits:2}).format(amount || 0)}</div>
+            <div className="hint">預覽：${new Intl.NumberFormat('zh-HK',{maximumFractionDigits:2}).format(amountE || 0)}</div>
           </div>
-          {amountInvalid && amountStr && <div className="error">請輸入大於 0 的金額</div>}
+          {amountInvalidE && amountEStr && <div className="error">請輸入大於 0 的金額</div>}
         </div>
         <div className="field">
           <label>備註</label>
@@ -218,7 +225,7 @@ export default function Page() {
           <input type="file" multiple onChange={e => setFiles(Array.from(e.target.files || []))} />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="expenseBtn" onClick={() => onSubmit('expense')} disabled={saving || amountInvalid}>提交支出</button>
+          <button className="expenseBtn" onClick={() => onSubmit('expense')} disabled={saving || amountInvalidE}>提交支出</button>
           <div className="hint">{message}</div>
         </div>
         </div>
@@ -286,18 +293,18 @@ export default function Page() {
               inputMode="decimal"
               pattern="[0-9]*"
               placeholder="請輸入金額"
-              value={amountStr}
+              value={amountIStr}
               onChange={e => {
                 const raw = e.target.value.replace(/[^\d.\-]/g, '')
-                setAmountStr(raw)
+                setAmountIStr(raw)
                 const n = Number(raw || 0)
-                setAmount(n)
+                setAmountI(n)
               }}
-            className={amountInvalid && amountStr ? 'invalid' : ''}
+            className={amountInvalidI && amountIStr ? 'invalid' : ''}
             />
-            <div className="hint">預覽：${new Intl.NumberFormat('zh-HK',{maximumFractionDigits:2}).format(amount || 0)}</div>
+            <div className="hint">預覽：${new Intl.NumberFormat('zh-HK',{maximumFractionDigits:2}).format(amountI || 0)}</div>
           </div>
-          {amountInvalid && amountStr && <div className="error">請輸入大於 0 的金額</div>}
+          {amountInvalidI && amountIStr && <div className="error">請輸入大於 0 的金額</div>}
         </div>
         <div className="field">
           <label>備註</label>
@@ -308,7 +315,7 @@ export default function Page() {
           <input type="file" multiple onChange={e => setFiles(Array.from(e.target.files || []))} />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="incomeBtn" onClick={() => onSubmit('income')} disabled={saving || amountInvalid}>提交收入</button>
+          <button className="incomeBtn" onClick={() => onSubmit('income')} disabled={saving || amountInvalidI}>提交收入</button>
           <div className="hint">{message}</div>
         </div>
         </div>
@@ -368,7 +375,7 @@ function FieldWithQuickCreate({
         <label>快速新增</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <input value={input} onChange={e => setInput(e.target.value)} placeholder="輸入新增" />
-          <button type="button" className="primary" onClick={() => onQuickCreate(input)}>新增</button>
+          <button type="button" className="primary" onClick={() => input.trim() && onQuickCreate(input.trim())}>新增</button>
         </div>
       </div>
       <div className="hint">建議：先輸入再選擇；或直接新增後選擇</div>

@@ -42,6 +42,7 @@ export class EntriesController {
     @Query('keyword') keyword?: string,
     @Query('min_amount') minAmount?: string,
     @Query('max_amount') maxAmount?: string,
+    @Query('flow') flow?: string,
     @Query('has_receipt') hasReceipt?: string
   ) {
     const where: any = {}
@@ -57,6 +58,8 @@ export class EntriesController {
     if (keyword) where.OR = [{ content: { contains: keyword, mode: Prisma.QueryMode.insensitive } }, { note: { contains: keyword, mode: Prisma.QueryMode.insensitive } }]
     if (minAmount) where.amount = { ...(where.amount || {}), gte: Number(minAmount) }
     if (maxAmount) where.amount = { ...(where.amount || {}), lte: Number(maxAmount) }
+    if (flow === 'income') where.amount = { ...(where.amount || {}), gt: 0 }
+    if (flow === 'expense') where.amount = { ...(where.amount || {}), lt: 0 }
     if (hasReceipt === 'true') where.attachments = { some: {} }
     if (hasReceipt === 'false') where.attachments = { none: {} }
     const items = await this.prisma.entry.findMany({
