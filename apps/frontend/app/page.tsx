@@ -32,6 +32,7 @@ export default function Page() {
   const [isMobile, setIsMobile] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmFlow, setConfirmFlow] = useState<'expense' | 'income'>('expense')
+  const [confirmCountdown, setConfirmCountdown] = useState(0)
 
   async function fetchOptions() {
     const [cs, cos, hs, fs] = await Promise.all([
@@ -54,6 +55,15 @@ export default function Page() {
     window.addEventListener('resize', fn)
     return () => window.removeEventListener('resize', fn)
   }, [])
+  useEffect(() => {
+    if (confirmOpen) {
+      setConfirmCountdown(3)
+      const id = setInterval(() => setConfirmCountdown(v => (v > 0 ? v - 1 : 0)), 1000)
+      return () => clearInterval(id)
+    } else {
+      setConfirmCountdown(0)
+    }
+  }, [confirmOpen])
 
   async function quickCreate(path: string, name: string, payload: any = {}) {
     const r = await fetch(`${API}/api/${path}/quick-create`, {
@@ -369,6 +379,7 @@ export default function Page() {
             <div className="row"><div>資金源/去向</div><div>{funds.find(c=>c.id===fundId)?.name || '-'}</div></div>
             <div className="row"><div>內容</div><div>{content || '-'}</div></div>
             <div className="row"><div>金額</div><div>${new Intl.NumberFormat('zh-HK',{maximumFractionDigits:2}).format(confirmFlow==='expense'? (amountE||0) : (amountI||0))}</div></div>
+            <div className="hint">此筆將依{confirmFlow==='expense'?'支出':'收入'}自動存為{confirmFlow==='expense'?'負':'正'}數</div>
             <div className="files">
               <div className="row"><div>附件</div><div>{files.length ? `${files.length} 件` : '無'}</div></div>
               {files.length>0 && (
@@ -379,7 +390,9 @@ export default function Page() {
             </div>
             <div className="modalActions">
               <button onClick={closeConfirm} disabled={saving}>取消</button>
-              <button className={confirmFlow==='expense'?'expenseBtn':'incomeBtn'} onClick={() => onSubmit(confirmFlow)} disabled={saving}>確認提交</button>
+              <button className={confirmFlow==='expense'?'expenseBtn':'incomeBtn'} onClick={() => onSubmit(confirmFlow)} disabled={saving || confirmCountdown>0}>
+                確認提交{confirmCountdown>0 ? `（${confirmCountdown}s）` : ''}
+              </button>
             </div>
           </div>
         </div>
