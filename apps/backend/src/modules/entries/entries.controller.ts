@@ -9,6 +9,8 @@ export class EntriesController {
 
   @Post()
   async create(@Body() body: any, @Headers('Idempotency-Key') idem?: string) {
+    const amt = Number(body.amount)
+    const flow = body.flow === 'expense' ? 'expense' : body.flow === 'income' ? 'income' : null
     const data = {
       date: body.date ? new Date(body.date) : new Date(),
       categoryId: body.categoryId,
@@ -16,7 +18,7 @@ export class EntriesController {
       handlerId: body.handlerId,
       fundId: body.fundId,
       content: body.content,
-      amount: Number(body.amount),
+      amount: flow === 'expense' ? -Math.abs(amt) : flow === 'income' ? Math.abs(amt) : amt,
       note: body.note ?? null,
       createdBy: body.createdBy ?? null,
       idempotencyKey: idem || body.idempotencyKey || null,
@@ -70,6 +72,8 @@ export class EntriesController {
   async batch(@Body() body: any[]) {
     const results = []
     for (const b of Array.isArray(body) ? body : []) {
+      const amt = Number(b.amount)
+      const flow = b.flow === 'expense' ? 'expense' : b.flow === 'income' ? 'income' : null
       const data = {
         date: b.date ? new Date(b.date) : new Date(),
         categoryId: b.categoryId,
@@ -77,7 +81,7 @@ export class EntriesController {
         handlerId: b.handlerId,
         fundId: b.fundId,
         content: b.content,
-        amount: Number(b.amount),
+        amount: flow === 'expense' ? -Math.abs(amt) : flow === 'income' ? Math.abs(amt) : amt,
         note: b.note ?? null,
         createdBy: b.createdBy ?? null,
         idempotencyKey: b.idempotencyKey || null,

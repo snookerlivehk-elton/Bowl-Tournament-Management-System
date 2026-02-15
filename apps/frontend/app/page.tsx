@@ -48,7 +48,7 @@ export default function Page() {
     return r.json()
   }
 
-  async function onSubmit() {
+  async function onSubmit(flow: 'expense' | 'income') {
     setSaving(true)
     setMessage('')
     try {
@@ -64,6 +64,7 @@ export default function Page() {
           content,
           amount,
           note,
+          flow,
         }),
       }).then(r => r.json())
       for (const f of files) {
@@ -104,8 +105,9 @@ export default function Page() {
 
   return (
     <div className="container">
-      <div className="card">
-        <h1 style={{ marginTop: 0 }}>記帳</h1>
+      <div className="grid2">
+        <div className="card cardExpense">
+          <h1 style={{ marginTop: 0 }}>支出</h1>
         <div className="field">
           <label>日期</label>
           <input type="date" value={date} onChange={e => setDate(e.target.value)} />
@@ -171,8 +173,80 @@ export default function Page() {
           <input type="file" multiple onChange={e => setFiles(Array.from(e.target.files || []))} />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="primary" onClick={onSubmit} disabled={saving}>提交</button>
+          <button className="expenseBtn" onClick={() => onSubmit('expense')} disabled={saving}>提交支出</button>
           <div className="hint">{message}</div>
+        </div>
+        </div>
+        <div className="card cardIncome">
+          <h1 style={{ marginTop: 0 }}>收入</h1>
+        <div className="field">
+          <label>日期</label>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+        </div>
+        <FieldWithQuickCreate
+          label="分類"
+          options={categories}
+          value={categoryId}
+          onChange={setCategoryId}
+          onQuickCreate={async name => {
+            const r = await quickCreate('categories', name)
+            await fetchOptions()
+            setCategoryId(r.id)
+          }}
+        />
+        <FieldWithQuickCreate
+          label="公司名稱"
+          options={companies}
+          value={companyId}
+          onChange={setCompanyId}
+          onQuickCreate={async name => {
+            const r = await quickCreate('companies', name)
+            await fetchOptions()
+            setCompanyId(r.id)
+          }}
+        />
+        <FieldWithQuickCreate
+          label="經手人"
+          options={handlers}
+          value={handlerId}
+          onChange={setHandlerId}
+          onQuickCreate={async name => {
+            const r = await quickCreate('handlers', name)
+            await fetchOptions()
+            setHandlerId(r.id)
+          }}
+        />
+        <FieldWithQuickCreate
+          label="資金源/去向"
+          options={funds}
+          value={fundId}
+          onChange={setFundId}
+          onQuickCreate={async name => {
+            const r = await quickCreate('funds', name, { direction: 'neutral' })
+            await fetchOptions()
+            setFundId(r.id)
+          }}
+        />
+        <div className="field">
+          <label>內容</label>
+          <input value={content} onChange={e => setContent(e.target.value)} placeholder="敘述" />
+        </div>
+        <div className="field">
+          <label>金額</label>
+          <input type="number" value={amount} onChange={e => setAmount(Number(e.target.value))} />
+        </div>
+        <div className="field">
+          <label>備註</label>
+          <input value={note} onChange={e => setNote(e.target.value)} />
+        </div>
+        <div className="field">
+          <label>單據上存（相片與PDF）</label>
+          <input type="file" multiple onChange={e => setFiles(Array.from(e.target.files || []))} />
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="incomeBtn" onClick={() => onSubmit('income')} disabled={saving}>提交收入</button>
+          <div className="hint">{message}</div>
+        </div>
         </div>
       </div>
     </div>

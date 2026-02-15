@@ -49,6 +49,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }
           .primary { background: var(--brand); border-color: var(--brand); color: #0b1220; font-weight: 600 }
           .primary:hover { filter: brightness(1.05) }
+          .incomeBtn { background: var(--accent); border-color: var(--accent); color: #062016; font-weight: 600 }
+          .incomeBtn:hover { filter: brightness(1.05) }
+          .expenseBtn { background: #f87171; border-color: #f87171; color: #250808; font-weight: 600 }
+          .expenseBtn:hover { filter: brightness(1.05) }
+          .grid2 { display: grid; grid-template-columns: 1fr; gap: 16px }
+          @media (min-width: 900px) { .grid2 { grid-template-columns: 1fr 1fr } }
+          .cardIncome { border-color: #155e59 }
+          .cardExpense { border-color: #5b1a1a }
           .hint { font-size: 12px; color: var(--muted); margin-top: 6px }
           table { width: 100%; border-collapse: collapse; }
           th, td { padding: 8px 10px; border-bottom: 1px solid #263245 }
