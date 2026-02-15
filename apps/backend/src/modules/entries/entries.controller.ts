@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Query, Headers, UseGuards } from '@nestjs/common'
 import { PrismaService } from '../../prisma.service.js'
 import { ApiKeyGuard } from '../../auth/api-key.guard.js'
+import { Prisma } from '@prisma/client'
 
 @Controller('api/entries')
 export class EntriesController {
@@ -51,7 +52,7 @@ export class EntriesController {
     if (company) where.companyId = Number(company)
     if (handler) where.handlerId = Number(handler)
     if (fund) where.fundId = Number(fund)
-    if (keyword) where.OR = [{ content: { contains: keyword, mode: 'insensitive' } }, { note: { contains: keyword, mode: 'insensitive' } }]
+    if (keyword) where.OR = [{ content: { contains: keyword, mode: Prisma.QueryMode.insensitive } }, { note: { contains: keyword, mode: Prisma.QueryMode.insensitive } }]
     if (minAmount) where.amount = { ...(where.amount || {}), gte: Number(minAmount) }
     if (maxAmount) where.amount = { ...(where.amount || {}), lte: Number(maxAmount) }
     if (hasReceipt === 'true') where.attachments = { some: {} }
