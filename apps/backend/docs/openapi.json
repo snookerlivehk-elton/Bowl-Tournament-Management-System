@@ -1,0 +1,87 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Railway 記帳 API", "version": "0.1.0" },
+  "servers": [{ "url": "https://your-backend.example.com" }],
+  "paths": {
+    "/health": { "get": { "responses": { "200": { "description": "OK" } } } },
+    "/api/categories": {
+      "get": {
+        "parameters": [{ "in": "query", "name": "q", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "List" } }
+      }
+    },
+    "/api/categories/quick-create": {
+      "post": {
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Created/Upserted" } }
+      }
+    },
+    "/api/entries": {
+      "post": {
+        "parameters": [{ "in": "header", "name": "Idempotency-Key", "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["content", "amount"],
+                "properties": {
+                  "date": { "type": "string", "format": "date" },
+                  "categoryId": { "type": "integer" },
+                  "companyId": { "type": "integer" },
+                  "handlerId": { "type": "integer" },
+                  "fundId": { "type": "integer" },
+                  "content": { "type": "string" },
+                  "amount": { "type": "number" },
+                  "note": { "type": "string" },
+                  "idempotencyKey": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Created" } }
+      },
+      "get": { "responses": { "200": { "description": "List" } } }
+    },
+    "/api/entries/batch": {
+      "post": {
+        "parameters": [{ "in": "header", "name": "x-api-key", "schema": { "type": "string" }, "required": true }],
+        "requestBody": { "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/EntryCreate" } } } } },
+        "responses": { "200": { "description": "Batch result" } }
+      }
+    },
+    "/api/uploads/sign": {
+      "post": {
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "mime": { "type": "string" }, "size": { "type": "integer" } } } } } },
+        "responses": { "200": { "description": "Presigned POST" } }
+      }
+    },
+    "/api/uploads/complete": {
+      "post": {
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "entryId": { "type": "integer" }, "key": { "type": "string" }, "filename": { "type": "string" }, "mime": { "type": "string" }, "size": { "type": "integer" } } } } } },
+        "responses": { "200": { "description": "Attachment recorded" } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "EntryCreate": {
+        "type": "object",
+        "required": ["content", "amount"],
+        "properties": {
+          "date": { "type": "string", "format": "date" },
+          "categoryId": { "type": "integer" },
+          "companyId": { "type": "integer" },
+          "handlerId": { "type": "integer" },
+          "fundId": { "type": "integer" },
+          "content": { "type": "string" },
+          "amount": { "type": "number" },
+          "note": { "type": "string" },
+          "idempotencyKey": { "type": "string" },
+          "createdBy": { "type": "string" }
+        }
+      }
+    }
+  }
+}

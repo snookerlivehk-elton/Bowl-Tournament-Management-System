@@ -1,0 +1,13 @@
+{
+  "name": "railway-accounting",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/backend",
+    "apps/frontend"
+  ],
+  "scripts": {
+    "build": "npm run build -w apps/backend && npm run build -w apps/frontend",
+    "dev": "npm run dev -w apps/backend & npm run dev -w apps/frontend"
+  }
+}

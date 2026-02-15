@@ -1,0 +1,9 @@
+{
+  "name": "記帳",
+  "short_name": "記帳",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0ea5e9",
+  "icons": []
+}

@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Entry {
+  id          Int          @id @default(autoincrement())
+  date        DateTime     @default(now())
+  categoryId  Int?
+  companyId   Int?
+  handlerId   Int?
+  fundId      Int?
+  content     String
+  amount      Decimal
+  note        String?
+  createdBy   String?
+  idempotencyKey String?  @unique
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  attachments Attachment[]
+  category    Category?    @relation(fields: [categoryId], references: [id])
+  company     Company?     @relation(fields: [companyId], references: [id])
+  handler     Handler?     @relation(fields: [handlerId], references: [id])
+  fund        Fund?        @relation(fields: [fundId], references: [id])
+
+  @@index([date, companyId, categoryId])
+  @@index([amount])
+}
+
+model Attachment {
+  id         Int      @id @default(autoincrement())
+  entryId    Int
+  storageKey String
+  filename   String
+  mime       String
+  size       Int
+  pages      Int?
+  createdAt  DateTime @default(now())
+  entry      Entry    @relation(fields: [entryId], references: [id])
+
+  @@index([entryId])
+}
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  entries   Entry[]
+}
+
+model Company {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  entries   Entry[]
+}
+
+model Handler {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  entries   Entry[]
+}
+
+enum FundDirection {
+  source
+  destination
+  neutral
+}
+
+model Fund {
+  id        Int           @id @default(autoincrement())
+  name      String        @unique
+  direction FundDirection @default(neutral)
+  active    Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  entries   Entry[]
+}
