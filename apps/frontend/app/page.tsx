@@ -22,6 +22,11 @@ export default function Page() {
   const [files, setFiles] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
+  const [toast, setToast] = useState('')
+  const [items, setItems] = useState<any[]>([])
+  const amountInvalid = isNaN(amount) || amount <= 0
+  const [flowTab, setFlowTab] = useState<'expense' | 'income'>('expense')
+  const [isMobile, setIsMobile] = useState(false)
 
   async function fetchOptions() {
     const [cs, cos, hs, fs] = await Promise.all([
@@ -38,6 +43,11 @@ export default function Page() {
 
   useEffect(() => {
     fetchOptions()
+    fetchRecent()
+    const fn = () => setIsMobile(window.innerWidth < 900)
+    fn()
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
   }, [])
 
   async function quickCreate(path: string, name: string, payload: any = {}) {
@@ -53,6 +63,7 @@ export default function Page() {
     setSaving(true)
     setMessage('')
     try {
+      if (amountInvalid) throw new Error('金額不合法')
       const entry = await fetch(`${API}/api/entries`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -93,8 +104,12 @@ export default function Page() {
         })
       }
       setMessage('已儲存')
+      setToast(flow === 'expense' ? '支出已儲存' : '收入已儲存')
+      setTimeout(() => setToast(''), 3000)
+      await fetchRecent()
       setContent('')
       setAmount(0)
+      setAmountStr('')
       setNote('')
       setFiles([])
     } catch (e: any) {
@@ -103,10 +118,22 @@ export default function Page() {
       setSaving(false)
     }
   }
+  async function fetchRecent() {
+    const r = await fetch(`${API}/api/entries`).then(r => r.json())
+    setItems(Array.isArray(r) ? r.slice(0, 20) : [])
+  }
+  function toTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   return (
     <div className="container">
+      <div className="tabs">
+        <button className={flowTab === 'expense' ? 'tabActive tab' : 'tab'} onClick={() => setFlowTab('expense')}>支出</button>
+        <button className={flowTab === 'income' ? 'tabActive tab' : 'tab'} onClick={() => setFlowTab('income')}>收入</button>
+      </div>
       <div className="grid2">
+        {(isMobile ? flowTab === 'expense' : true) && (
         <div className="card cardExpense">
           <h1 style={{ marginTop: 0 }}>支出</h1>
         <div className="field">
@@ -164,7 +191,7 @@ export default function Page() {
         <div className="field">
           <label>金額</label>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input
+              <input
               type="text"
               inputMode="decimal"
               pattern="[0-9]*"
@@ -176,9 +203,11 @@ export default function Page() {
                 const n = Number(raw || 0)
                 setAmount(n)
               }}
+            className={amountInvalid && amountStr ? 'invalid' : ''}
             />
             <div className="hint">預覽：${new Intl.NumberFormat('zh-HK',{maximumFractionDigits:2}).format(amount || 0)}</div>
           </div>
+          {amountInvalid && amountStr && <div className="error">請輸入大於 0 的金額</div>}
         </div>
         <div className="field">
           <label>備註</label>
@@ -189,10 +218,12 @@ export default function Page() {
           <input type="file" multiple onChange={e => setFiles(Array.from(e.target.files || []))} />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="expenseBtn" onClick={() => onSubmit('expense')} disabled={saving}>提交支出</button>
+          <button className="expenseBtn" onClick={() => onSubmit('expense')} disabled={saving || amountInvalid}>提交支出</button>
           <div className="hint">{message}</div>
         </div>
         </div>
+        )}
+        {(isMobile ? flowTab === 'income' : true) && (
         <div className="card cardIncome">
           <h1 style={{ marginTop: 0 }}>收入</h1>
         <div className="field">
@@ -262,9 +293,11 @@ export default function Page() {
                 const n = Number(raw || 0)
                 setAmount(n)
               }}
+            className={amountInvalid && amountStr ? 'invalid' : ''}
             />
             <div className="hint">預覽：${new Intl.NumberFormat('zh-HK',{maximumFractionDigits:2}).format(amount || 0)}</div>
           </div>
+          {amountInvalid && amountStr && <div className="error">請輸入大於 0 的金額</div>}
         </div>
         <div className="field">
           <label>備註</label>
@@ -275,11 +308,32 @@ export default function Page() {
           <input type="file" multiple onChange={e => setFiles(Array.from(e.target.files || []))} />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="incomeBtn" onClick={() => onSubmit('income')} disabled={saving}>提交收入</button>
+          <button className="incomeBtn" onClick={() => onSubmit('income')} disabled={saving || amountInvalid}>提交收入</button>
           <div className="hint">{message}</div>
         </div>
         </div>
+        )}
       </div>
+      <div className="section">
+        <div className="card">
+          <h2 style={{ marginTop: 0 }}>最近流水</h2>
+          <div className="list">
+            {items.map(i => (
+              <div className="itemCard" key={i.id}>
+                <div>
+                  <div>{i.content}</div>
+                  <div className="badge">{new Date(i.date).toLocaleDateString('zh-HK')} · {i.category?.name || '-'} · {i.company?.name || '-'}</div>
+                </div>
+                <div className={Number(i.amount) >= 0 ? 'amtPos' : 'amtNeg'}>
+                  ${new Intl.NumberFormat('zh-HK',{maximumFractionDigits:2}).format(Number(i.amount))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      {toast && <div className="toast">{toast}</div>}
+      <button className="topBtn" onClick={toTop}>返回頂部</button>
     </div>
   )
 }

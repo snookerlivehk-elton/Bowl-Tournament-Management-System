@@ -65,6 +65,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           table { width: 100%; border-collapse: collapse; }
           th, td { padding: 8px 10px; border-bottom: 1px solid #263245 }
           th { color: var(--muted); font-weight: 500 }
+          .list { display: grid; gap: 10px }
+          .itemCard { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 12px; border-radius: 10px; background: #0b1220; border: 1px solid #223047 }
+          .amtPos { color: #34d399; font-weight: 700 }
+          .amtNeg { color: #f87171; font-weight: 700 }
+          .badge { font-size: 12px; color: var(--muted) }
+          .toast { position: fixed; top: 14px; right: 14px; background: #10b981; color: #062016; padding: 10px 14px; border-radius: 8px; border: 1px solid #0ea5a5; box-shadow: 0 6px 24px rgba(0,0,0,.25) }
+          .topBtn { position: fixed; bottom: 18px; right: 18px; padding: 12px 14px; border-radius: 999px; background: var(--brand); color: #0b1220; border: 1px solid var(--brand) }
+          .error { color: #fca5a5; font-size: 12px }
+          .invalid { border-color: #f87171 }
+          .tabs { display: none; gap: 8px; margin-bottom: 12px }
+          .tab { padding: 10px 14px; border-radius: 8px; border: 1px solid #223047; background: #0b1220; color: var(--text) }
+          .tabActive { background: var(--brand); color: #0b1220; border-color: var(--brand); font-weight: 700 }
+          @media (max-width: 900px) { .tabs { display: flex } }
         `}</style>
       </head>
       <body>
