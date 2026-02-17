@@ -12,6 +12,7 @@ const app = express()
 app.use(helmet())
 app.use(cors())
 app.use(express.json())
+app.use(express.urlencoded({ extended: false }))
 app.use(morgan('dev'))
 
 const PORT = process.env.PORT || 3000
@@ -36,27 +37,12 @@ app.get('/', (req, res) => {
   res.json({
     name: 'Bowl Tournament Management System',
     version: pkg.version,
-    endpoints: ['/health', '/api/version', '/api/auth/login', '/api/clubs', '/api/matches', '/api/admin/titles', '/api/admin/roles', '/api/players', '/api/integrations/ocr/scoreboard', '/playground.html']
+    endpoints: ['/health', '/api/version', '/api/auth/login', '/api/clubs', '/api/matches', '/api/admin/titles', '/api/admin/roles', '/api/players', '/api/integrations/ocr/scoreboard', '/player/invite?name=Alex&nationality=HKG', '/join/:token']
   })
 })
 
-app.get('/playground.html', (req, res) => {
-  res.set('Content-Security-Policy', [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
-    "script-src-attr 'unsafe-inline'",
-    "style-src 'self' 'unsafe-inline'",
-    "style-src-attr 'unsafe-inline'",
-    "img-src * data: blob:",
-    "connect-src 'self'",
-    "base-uri 'self'",
-    "form-action 'self'"
-  ].join('; '))
-  res.sendFile(path.join(__dirname, 'public', 'playground.html'))
-})
-
-// 靜態資源需在 /playground.html 之後掛載，讓上方自訂 CSP 生效
-app.use(express.static(path.join(__dirname, 'public')))
+// 靜態資源
+app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }))
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })

@@ -41,3 +41,12 @@ create table if not exists rolls (
   player_id int not null,
   pins jsonb not null
 );
+
+-- invites for QR-based player-vs-player matches
+create table if not exists match_invites (
+  id serial primary key,
+  match_id int not null references matches(id) on delete cascade,
+  token text not null unique,
+  created_at timestamptz default now(),
+  expires_at timestamptz
+);
