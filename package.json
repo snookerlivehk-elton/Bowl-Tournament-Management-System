@@ -1,13 +1,15 @@
 {
-  "name": "railway-accounting",
+  "name": "bowl-tournament-management-system",
+  "version": "0.1.1",
   "private": true,
-  "version": "0.1.0",
-  "workspaces": [
-    "apps/backend",
-    "apps/frontend"
-  ],
   "scripts": {
-    "build": "npm run build -w apps/backend && npm run build -w apps/frontend",
-    "dev": "npm run dev -w apps/backend & npm run dev -w apps/frontend"
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "helmet": "^7.0.0",
+    "morgan": "^1.10.0",
+    "pg": "^8.11.5"
   }
 }

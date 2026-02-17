@@ -1,0 +1,21 @@
+name: db-init
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: INIT
+        required: true
+        type: string
+jobs:
+  init:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.confirm == 'INIT' }}
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGSSLMODE: require
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install psql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Apply schema
+        run: psql "$DATABASE_URL" -f db/schema.sql

@@ -1,63 +1,55 @@
-# Railway 記帳服務
+# Bowl Tournament Management System (MVP Skeleton)
 
-## 結構
-- apps/backend：NestJS API（Prisma、R2簽名上傳）
-- apps/frontend：Next.js PWA 表單
+Minimal Node.js API skeleton for the Bowl Tournament Management System. Railway-ready for early development. Manual score input first. APIs for integrations/OCR reserved.
 
-## 環境變數
-參考 `.env.example`，在 Railway 分別設定：
-- PORT
-- DATABASE_URL（Postgres）
-- R2_ENDPOINT、R2_BUCKET、R2_ACCESS_KEY_ID、R2_SECRET_ACCESS_KEY
-- NEXT_PUBLIC_API_URL（前端指向後端）
+## Local Development
 
-## 部署步驟
-1. 建立 Railway 專案與 Postgres 外掛
-2. 後端服務：指向 `apps/backend`，啟動命令 `npm run start -w apps/backend`
-3. 前端服務：指向 `apps/frontend`，啟動命令 `npm run start -w apps/frontend`
-4. 設定環境變數並重新部署
+1. Install dependencies:
+   - `npm install`
+2. Start server:
+   - `npm start`
+3. Health check:
+   - Open `http://localhost:3000/health`
 
-## 資料庫
-Prisma Schema 位於 `apps/backend/prisma/schema.prisma`，在本地或部署前執行：
-```
-npx prisma migrate deploy
-```
-（Railway 可於啟動前執行 Migration Script）
+## Endpoints (MVP)
+- `GET /` – service metadata
+- `GET /health` – health check
+- `GET /api/version` – API version
+- `POST /api/auth/login` – mock login `{ role: "player" | "club" | "official" }`
+- `GET /api/clubs` – placeholder list (empty)
+- `GET /api/matches` – placeholder list
+- `POST /api/players` – create player with `photoUrl` and `nationality`
+- `GET/POST /api/admin/titles` – custom titles
+- `POST /api/admin/roles` – define roles with parent and permissions
+- `POST /api/matches` – create a match `{ playerIds:[..], framesPerMatch }`
+- `POST /api/matches/:id/frames` – submit manual scores per frame `{ frameNo, rolls:[{playerId,pins:[...]}] }`
+- `POST /api/integrations/ocr/scoreboard` – reserved, returns 501
+- `GET /api/integrations/centers/:id/scores` – reserved, returns 501
 
-## 上傳流程
-前端向 `/api/uploads/sign` 取得簽名，直傳至 R2，完成後呼叫 `/api/uploads/complete` 寫入附件記錄。
+## Railway Deployment
+Railway detects Node projects automatically. Two options:
 
-## GitHub 連接與 CI
-- 推送到 GitHub 後，Actions 會執行基本建置（`.github/workflows/ci.yml`）
-- Railway 建議以「Connect to GitHub」方式建立服務，選擇 monorepo 子目錄
-- 提交到 main 分支會自動重新部署
+1) Buildpack/Nixpacks:
+- Push this project to GitHub
+- Create a Railway project and connect the repo
+- Railway will run `npm install` and `npm start` (listens on `$PORT`)
 
-### 快速推送指引（本機）
-```
-git init
-git add .
-git commit -m "init"
-git branch -M main
-git remote add origin https://github.com/<你的帳號>/<你的倉庫>.git
-git push -u origin main
-```
+2) Dockerfile:
+- Keep the provided `Dockerfile`
+- On Railway, enable Docker deployment from the repo
 
-## 機器人（OpenClaw）整合
-- 建議開啟 API Key 保護：在後端環境變數加入 `API_KEY=你自訂的字串`
-- 機器人呼叫：
-  - 單筆入帳：`POST /api/entries`，附帶 `Idempotency-Key` header（避免重複）
-  - 批次入帳：`POST /api/entries/batch`，附帶 `x-api-key: <API_KEY>`
-  - 簽名上傳：`POST /api/uploads/sign` → 直傳 R2 → `POST /api/uploads/complete`
-- OpenAPI 規格：`apps/backend/docs/openapi.json`
-- 範例（cURL）：
-```
-curl -X POST "$API/api/entries" \
-  -H "Content-Type: application/json" \
-  -H "Idempotency-Key: 8c1c..." \
-  -d '{"content":"午餐","amount":-85,"categoryId":1,"companyId":2}'
+## GitHub Actions
+- `.github/workflows/ci.yml` runs on push/PR to main
+- `.github/workflows/db-init.yml` can be manually dispatched to apply `db/schema.sql`
+- 在 GitHub 專案設定 Secrets 新增 `DATABASE_URL` 給 db-init 使用
 
-curl -X POST "$API/api/entries/batch" \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -d '[{"content":"工資","amount":10000,"idempotencyKey":"k1"},{"content":"交通","amount":-20,"idempotencyKey":"k2"}]'
-```
+## Next Steps
+- Add authentication (JWT) and RBAC
+- Wire up PostgreSQL on Railway and run `db/schema.sql`
+- Implement QR-based match flow and admin UIs
+- Add charts on a lightweight frontend (React/Chart.js)
+
+## Environment Variables
+- `DATABASE_URL` PostgreSQL connection string
+- `PGSSL` set `true` when using managed Postgres with SSL (e.g., Railway)
+- `INIT_DB` set `true` on first deploy to auto-apply `db/schema.sql` (requires `DATABASE_URL`). Set back to `false` afterwards.
