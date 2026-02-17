@@ -226,11 +226,18 @@ router.post('/player/matches/join', async (req, res) => {
 router.get('/matches/:id/summary', async (req, res) => {
   const id = parseInt(req.params.id, 10)
   if (db.available()) {
-    const mr = await db.query('select id, player_ids, frames_per_match, status from matches where id=$1', [id])
-    if (mr.rowCount === 0) return res.status(404).json({ error: 'match not found' })
-    const match = mr.rows[0]
-    const fr = await db.query('select frame_no, scores from frames where match_id=$1 order by frame_no', [id])
-    return res.json({ id, playerIds: match.player_ids, framesPerMatch: match.frames_per_match, status: match.status, frames: fr.rows })
+    try {
+      const mr = await db.query('select id, player_ids, frames_per_match, status from matches where id=$1', [id])
+      if (mr.rowCount === 0) return res.status(404).json({ error: 'match not found' })
+      const match = mr.rows[0]
+      const fr = await db.query('select frame_no, scores from frames where match_id=$1 order by frame_no', [id])
+      return res.json({ id, playerIds: match.player_ids, framesPerMatch: match.frames_per_match, status: match.status, frames: fr.rows })
+    } catch (e) {
+      if (e && e.code === '42703') {
+        return res.status(500).json({ error: 'schema missing: frames.scores', action: 'set INIT_DB=true then redeploy' })
+      }
+      return res.status(500).json({ error: 'summary failed' })
+    }
   }
   const m = mem.matches.find(x => x.id === id)
   if (!m) return res.status(404).json({ error: 'match not found' })
@@ -246,14 +253,21 @@ router.post('/matches/:id/scores', async (req, res) => {
   const { frameNo, scores } = req.body || {}
   if (!frameNo || !scores || typeof scores !== 'object') return res.status(400).json({ error: 'frameNo and scores required' })
   if (db.available()) {
-    const fr = await db.query('select id from frames where match_id=$1 and frame_no=$2', [id, frameNo])
-    if (fr.rowCount === 0) {
-      const ins = await db.query('insert into frames(match_id,frame_no,scores) values($1,$2,$3) returning id', [id, frameNo, JSON.stringify(scores)])
-      return res.status(201).json({ frameId: ins.rows[0].id })
+    try {
+      const fr = await db.query('select id from frames where match_id=$1 and frame_no=$2', [id, frameNo])
+      if (fr.rowCount === 0) {
+        const ins = await db.query('insert into frames(match_id,frame_no,scores) values($1,$2,$3) returning id', [id, frameNo, JSON.stringify(scores)])
+        return res.status(201).json({ frameId: ins.rows[0].id })
+      }
+      const fid = fr.rows[0].id
+      await db.query('update frames set scores=$1 where id=$2', [JSON.stringify(scores), fid])
+      return res.status(200).json({ frameId: fid })
+    } catch (e) {
+      if (e && e.code === '42703') {
+        return res.status(500).json({ error: 'schema missing: frames.scores', action: 'set INIT_DB=true then redeploy' })
+      }
+      return res.status(500).json({ error: 'update scores failed' })
     }
-    const fid = fr.rows[0].id
-    await db.query('update frames set scores=$1 where id=$2', [JSON.stringify(scores), fid])
-    return res.status(200).json({ frameId: fid })
   }
   let f = mem.frames.find(x => x.matchId === id && x.frameNo === frameNo)
   if (!f) {
