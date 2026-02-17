@@ -13,6 +13,7 @@ app.use(helmet())
 app.use(cors())
 app.use(express.json())
 app.use(morgan('dev'))
+app.use(express.static(path.join(__dirname, 'public')))
 
 const PORT = process.env.PORT || 3000
 
@@ -36,7 +37,7 @@ app.get('/', (req, res) => {
   res.json({
     name: 'Bowl Tournament Management System',
     version: pkg.version,
-    endpoints: ['/health', '/api/version', '/api/auth/login', '/api/clubs', '/api/matches', '/api/admin/titles', '/api/admin/roles', '/api/players', '/api/integrations/ocr/scoreboard']
+    endpoints: ['/health', '/api/version', '/api/auth/login', '/api/clubs', '/api/matches', '/api/admin/titles', '/api/admin/roles', '/api/players', '/api/integrations/ocr/scoreboard', '/playground.html']
   })
 })
 
