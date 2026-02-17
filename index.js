@@ -45,9 +45,13 @@ app.get('/playground.html', (req, res) => {
   res.set('Content-Security-Policy', [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline'",
+    "script-src-attr 'unsafe-inline'",
     "style-src 'self' 'unsafe-inline'",
+    "style-src-attr 'unsafe-inline'",
     "img-src * data: blob:",
-    "connect-src 'self'"
+    "connect-src 'self'",
+    "base-uri 'self'",
+    "form-action 'self'"
   ].join('; '))
   res.sendFile(path.join(__dirname, 'public', 'playground.html'))
 })
