@@ -44,6 +44,15 @@ app.get('/', (req, res) => {
 // 靜態資源
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }))
 
+// Convenience redirects so callers不必知道 /api 前綴
+app.get('/player/invite', (req, res) => {
+  const q = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : ''
+  res.redirect(302, `/api/player/invite${q}`)
+})
+app.get('/join/:token', (req, res) => {
+  res.redirect(302, `/api/join/${req.params.token}`)
+})
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })

@@ -121,6 +121,13 @@ router.get('/player/invite', async (req, res) => {
   const nationality = (req.query.nationality || '').trim() || null
   if (!name) return res.status(400).send('name required, e.g. /player/invite?name=Alex&nationality=HKG')
   try {
+    // 放寬此頁的 CSP 以允許外部 QR 服務
+    res.set('Content-Security-Policy', [
+      "default-src 'self'",
+      "img-src * data: blob:",
+      "style-src 'self' 'unsafe-inline'",
+      "script-src 'self' 'unsafe-inline'"
+    ].join('; '))
     const u1 = await ensureUser(name, nationality)
     let matchId
     if (db.available()) {
@@ -131,7 +138,7 @@ router.get('/player/invite', async (req, res) => {
       matchId = mr.rows[0].id
       const t = tok()
       await db.query('insert into match_invites(match_id, token, created_at) values($1,$2, now())', [matchId, t])
-      const joinUrl = `${req.protocol}://${req.get('host')}/join/${t}`
+      const joinUrl = `${req.protocol}://${req.get('host')}/api/join/${t}`
       const qr = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(joinUrl)}`
       return res.send(`
         <!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -147,7 +154,7 @@ router.get('/player/invite', async (req, res) => {
     const t = tok()
     if (!mem.invites) mem.invites = []
     mem.invites.push({ token: t, matchId: id })
-    const joinUrl = `${req.protocol}://${req.get('host')}/join/${t}`
+    const joinUrl = `${req.protocol}://${req.get('host')}/api/join/${t}`
     const qr = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(joinUrl)}`
     res.send(`
       <!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
