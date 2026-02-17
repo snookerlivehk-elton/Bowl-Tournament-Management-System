@@ -51,13 +51,4 @@ create table if not exists match_invites (
   expires_at timestamptz
 );
 
--- add frames.scores column if missing (to存每局總分)
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name='frames' AND column_name='scores'
-  ) THEN
-    ALTER TABLE frames ADD COLUMN scores jsonb;
-  END IF;
-END $$;
+alter table if not exists frames add column if not exists scores jsonb;
