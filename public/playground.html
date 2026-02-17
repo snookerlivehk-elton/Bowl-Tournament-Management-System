@@ -19,7 +19,9 @@
     async function post(path, body) {
       const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const t = await r.text()
-      try { return JSON.parse(t) } catch { return { raw: t, status: r.status } }
+      let data = null
+      try { data = JSON.parse(t) } catch { data = { raw: t } }
+      return { ok: r.ok, status: r.status, data }
     }
     function log(s) {
       const el = document.getElementById('log')
@@ -28,8 +30,8 @@
     async function createTitle() {
       const name = document.getElementById('titleName').value
       const scope = document.getElementById('titleScope').value
-      const res = await post('/api/admin/titles', { name, scope })
-      log(res)
+      const res = await post('/api/admin/titles', { name: (name||'').trim(), scope })
+      log(res.data || res)
     }
     async function listTitles() {
       const r = await fetch('/api/admin/titles')
@@ -39,25 +41,25 @@
       const name = document.getElementById('roleName').value
       const perms = document.getElementById('rolePerms').value.split(',').map(s=>s.trim()).filter(Boolean)
       const parent = document.getElementById('roleParent').value || null
-      const res = await post('/api/admin/roles', { name, permissions: perms, parentRoleId: parent?Number(parent):null })
-      log(res)
+      const res = await post('/api/admin/roles', { name: (name||'').trim(), permissions: perms, parentRoleId: parent?Number(parent):null })
+      log(res.data || res)
     }
     async function createPlayer(target) {
-      const name = document.getElementById(target+'Name').value
-      const nat = document.getElementById(target+'Nat').value
-      const url = document.getElementById(target+'Photo').value
+      const name = (document.getElementById(target+'Name').value || '').trim()
+      const nat = (document.getElementById(target+'Nat').value || '').trim()
+      const url = (document.getElementById(target+'Photo').value || '').trim()
       const res = await post('/api/players', { name, nationality: nat || null, photoUrl: url || null })
-      log(res)
+      log(res.data || res)
       const idField = document.getElementById(target+'Id')
-      if (res && res.id) idField.value = res.id
+      if (res && res.data && res.data.id) idField.value = res.data.id
     }
     async function createMatch() {
       const p1 = Number(document.getElementById('p1Id').value)
       const p2 = Number(document.getElementById('p2Id').value)
       const f = Number(document.getElementById('frames').value || 4)
       const res = await post('/api/matches', { playerIds: [p1,p2], framesPerMatch: f })
-      log(res)
-      if (res && res.id) document.getElementById('matchId').value = res.id
+      log(res.data || res)
+      if (res && res.data && res.data.id) document.getElementById('matchId').value = res.data.id
     }
     function parsePins(s) {
       if (!s) return []
@@ -71,7 +73,7 @@
       const pins1 = parsePins(document.getElementById('p1Pins').value)
       const pins2 = parsePins(document.getElementById('p2Pins').value)
       const res = await post(`/api/matches/${mid}/frames`, { frameNo, rolls: [ { playerId: p1, pins: pins1 }, { playerId: p2, pins: pins2 } ] })
-      log(res)
+      log(res.data || res)
     }
     async function ping() {
       const a = await fetch('/health').then(r=>r.json())
