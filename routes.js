@@ -234,7 +234,16 @@ router.get('/matches/:id/summary', async (req, res) => {
       return res.json({ id, playerIds: match.player_ids, framesPerMatch: match.frames_per_match, status: match.status, frames: fr.rows })
     } catch (e) {
       if (e && e.code === '42703') {
-        return res.status(500).json({ error: 'schema missing: frames.scores', action: 'set INIT_DB=true then redeploy' })
+        try {
+          await db.query('alter table if not exists frames add column if not exists scores jsonb')
+          const mr2 = await db.query('select id, player_ids, frames_per_match, status from matches where id=$1', [id])
+          if (mr2.rowCount === 0) return res.status(404).json({ error: 'match not found' })
+          const match2 = mr2.rows[0]
+          const fr2 = await db.query('select frame_no, scores from frames where match_id=$1 order by frame_no', [id])
+          return res.json({ id, playerIds: match2.player_ids, framesPerMatch: match2.frames_per_match, status: match2.status, frames: fr2.rows })
+        } catch (e2) {
+          return res.status(500).json({ error: 'schema missing: frames.scores', action: 'set INIT_DB=true then redeploy' })
+        }
       }
       return res.status(500).json({ error: 'summary failed' })
     }
@@ -264,7 +273,19 @@ router.post('/matches/:id/scores', async (req, res) => {
       return res.status(200).json({ frameId: fid })
     } catch (e) {
       if (e && e.code === '42703') {
-        return res.status(500).json({ error: 'schema missing: frames.scores', action: 'set INIT_DB=true then redeploy' })
+        try {
+          await db.query('alter table if not exists frames add column if not exists scores jsonb')
+          const fr2 = await db.query('select id from frames where match_id=$1 and frame_no=$2', [id, frameNo])
+          if (fr2.rowCount === 0) {
+            const ins2 = await db.query('insert into frames(match_id,frame_no,scores) values($1,$2,$3) returning id', [id, frameNo, JSON.stringify(scores)])
+            return res.status(201).json({ frameId: ins2.rows[0].id })
+          }
+          const fid2 = fr2.rows[0].id
+          await db.query('update frames set scores=$1 where id=$2', [JSON.stringify(scores), fid2])
+          return res.status(200).json({ frameId: fid2 })
+        } catch (e2) {
+          return res.status(500).json({ error: 'schema missing: frames.scores', action: 'set INIT_DB=true then redeploy' })
+        }
       }
       return res.status(500).json({ error: 'update scores failed' })
     }

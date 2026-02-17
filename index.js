@@ -22,7 +22,7 @@ async function initDbIfNeeded() {
     const p = path.join(__dirname, 'db', 'schema.sql')
     const sql = fs.readFileSync(p, 'utf8')
     const statements = sql
-      .split(/;\s*\n/gi)
+      .split(/;\s*(?:\r?\n|$)/gi)
       .map(s => s.trim())
       .filter(Boolean)
     for (const s of statements) {
