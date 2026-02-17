@@ -222,4 +222,114 @@ router.post('/player/matches/join', async (req, res) => {
   }
 })
 
+// ----- Match summary & per-frame scores (每局總分) -----
+router.get('/matches/:id/summary', async (req, res) => {
+  const id = parseInt(req.params.id, 10)
+  if (db.available()) {
+    const mr = await db.query('select id, player_ids, frames_per_match, status from matches where id=$1', [id])
+    if (mr.rowCount === 0) return res.status(404).json({ error: 'match not found' })
+    const match = mr.rows[0]
+    const fr = await db.query('select frame_no, scores from frames where match_id=$1 order by frame_no', [id])
+    return res.json({ id, playerIds: match.player_ids, framesPerMatch: match.frames_per_match, status: match.status, frames: fr.rows })
+  }
+  const m = mem.matches.find(x => x.id === id)
+  if (!m) return res.status(404).json({ error: 'match not found' })
+  const frames = mem.frames
+    .filter(f => f.matchId === id)
+    .sort((a,b)=>a.frameNo-b.frameNo)
+    .map(f=>({ frame_no: f.frameNo, scores: f.scores||null }))
+  res.json({ id, playerIds: m.playerIds, framesPerMatch: m.framesPerMatch, status: m.status, frames })
+})
+
+router.post('/matches/:id/scores', async (req, res) => {
+  const id = parseInt(req.params.id, 10)
+  const { frameNo, scores } = req.body || {}
+  if (!frameNo || !scores || typeof scores !== 'object') return res.status(400).json({ error: 'frameNo and scores required' })
+  if (db.available()) {
+    const fr = await db.query('select id from frames where match_id=$1 and frame_no=$2', [id, frameNo])
+    if (fr.rowCount === 0) {
+      const ins = await db.query('insert into frames(match_id,frame_no,scores) values($1,$2,$3) returning id', [id, frameNo, JSON.stringify(scores)])
+      return res.status(201).json({ frameId: ins.rows[0].id })
+    }
+    const fid = fr.rows[0].id
+    await db.query('update frames set scores=$1 where id=$2', [JSON.stringify(scores), fid])
+    return res.status(200).json({ frameId: fid })
+  }
+  let f = mem.frames.find(x => x.matchId === id && x.frameNo === frameNo)
+  if (!f) {
+    const fid = mem.frames.length + 1
+    f = { id: fid, matchId: id, frameNo, scores }
+    mem.frames.push(f)
+    return res.status(201).json({ frameId: fid })
+  }
+  f.scores = scores
+  res.json({ frameId: f.id })
+})
+
+// ----- Mobile match page (under /api, top-level redirect provided in index.js) -----
+router.get('/m/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10)
+  res.set('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "connect-src 'self'",
+  ].join('; '))
+  res.send(`<!doctype html>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>比賽進行 #${id}</title>
+<style>
+body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:14px}
+.card{border:1px solid #ddd;border-radius:8px;padding:12px;margin:10px 0}
+label{display:block;margin:6px 0 4px}
+input,button{padding:10px;font-size:16px}
+button{cursor:pointer}
+.row{display:flex;gap:12px;flex-wrap:wrap}
+.row>div{flex:1;min-width:140px}
+#log{background:#0b1020;color:#e8e8e8;border-radius:8px;padding:10px;white-space:pre-wrap}
+</style>
+<h2>比賽進行 #${id}</h2>
+<div class="card" id="summary">載入中…</div>
+<div class="card">
+  <div class="row">
+    <div><label>第幾局</label><input id="frameNo" value="1" type="number" min="1"></div>
+    <div><label id="p1Label">P1 分數</label><input id="p1Score" type="number" min="0" value="0"></div>
+    <div><label id="p2Label">P2 分數</label><input id="p2Score" type="number" min="0" value="0"></div>
+  </div>
+  <div style="margin-top:10px"><button onclick="submitFrame()">提交此局</button>
+  <button onclick="refresh()">更新</button>
+  <button onclick="share()">分享</button></div>
+</div>
+<div class="card"><div id="log">等待操作…</div></div>
+<script>
+const id=${id};
+function log(x){document.getElementById('log').textContent=(typeof x==='string')?x:JSON.stringify(x,null,2)}
+async function refresh(){
+  const r=await fetch('/api/matches/'+id+'/summary')
+  const d=await r.json()
+  const s=document.getElementById('summary')
+  const names=(d.playerIds||[]).join(' vs ')
+  s.innerHTML='<b>Players</b>: '+names+'<br><b>局數</b>: '+(d.framesPerMatch||4)+'<br><b>已入分</b>:'+ (d.frames||[]).map(f=>'#'+f.frame_no+': '+JSON.stringify(f.scores||{})).join(' , ')
+  if(d.playerIds&&d.playerIds.length>=2){
+    document.getElementById('p1Label').textContent='P1(' + d.playerIds[0] + ') 分數'
+    document.getElementById('p2Label').textContent='P2(' + d.playerIds[1] + ') 分數'
+  }
+}
+async function submitFrame(){
+  const frameNo=Number(document.getElementById('frameNo').value)
+  const p1=Number(document.getElementById('p1Score').value||0)
+  const p2=Number(document.getElementById('p2Score').value||0)
+  const d=await fetch('/api/matches/'+id+'/scores',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({frameNo,scores:{p1:p1,p2:p2}})})
+  const t=await d.text();try{log(JSON.parse(t))}catch{log(t)}
+  refresh()
+}
+function share(){
+  const url=location.href
+  navigator.clipboard&&navigator.clipboard.writeText(url)
+  alert('分享連結已複製：'+url)
+}
+refresh()
+</script>`)
+})
+
 module.exports = router

@@ -52,6 +52,9 @@ app.get('/player/invite', (req, res) => {
 app.get('/join/:token', (req, res) => {
   res.redirect(302, `/api/join/${req.params.token}`)
 })
+app.get('/m/:id', (req, res) => {
+  res.redirect(302, `/api/m/${req.params.id}`)
+})
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
