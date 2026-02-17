@@ -102,6 +102,28 @@ router.get('/integrations/centers/:id/scores', (req, res) => {
   res.status(501).json({ error: 'Not Implemented' })
 })
 
+// ----- One-time patch endpoint: add frames.scores column -----
+router.post('/admin/patch/frames-scores', async (req, res) => {
+  const key = process.env.PATCH_KEY
+  const provided = req.get('x-patch-key') || req.query.key
+  if (!key || !provided || provided !== key) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  if (!db.available()) {
+    return res.status(503).json({ error: 'db unavailable' })
+  }
+  try {
+    const check = await db.query("select 1 from information_schema.columns where table_name='frames' and column_name='scores'")
+    if (check.rowCount > 0) {
+      return res.status(200).json({ status: 'exists' })
+    }
+    await db.query('alter table if not exists frames add column if not exists scores jsonb')
+    return res.status(201).json({ status: 'added' })
+  } catch (e) {
+    return res.status(500).json({ error: 'patch failed' })
+  }
+})
+
 // ----- Player QR match flow -----
 async function ensureUser(name, nationality) {
   if (!db.available()) {
