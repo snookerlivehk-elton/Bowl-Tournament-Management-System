@@ -41,6 +41,17 @@ app.get('/', (req, res) => {
   })
 })
 
+app.get('/playground.html', (req, res) => {
+  res.set('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src * data: blob:",
+    "connect-src 'self'"
+  ].join('; '))
+  res.sendFile(path.join(__dirname, 'public', 'playground.html'))
+})
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
