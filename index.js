@@ -13,7 +13,6 @@ app.use(helmet())
 app.use(cors())
 app.use(express.json())
 app.use(morgan('dev'))
-app.use(express.static(path.join(__dirname, 'public')))
 
 const PORT = process.env.PORT || 3000
 
@@ -55,6 +54,9 @@ app.get('/playground.html', (req, res) => {
   ].join('; '))
   res.sendFile(path.join(__dirname, 'public', 'playground.html'))
 })
+
+// 靜態資源需在 /playground.html 之後掛載，讓上方自訂 CSP 生效
+app.use(express.static(path.join(__dirname, 'public')))
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
