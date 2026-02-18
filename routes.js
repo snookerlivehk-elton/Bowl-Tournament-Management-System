@@ -834,10 +834,63 @@ router.post('/matches/:id/scores', async (req, res) => {
   res.json({ frameId: f.id })
 })
 
+router.post('/matches/:id/winner', async (req, res) => {
+  const id = parseInt(req.params.id, 10)
+  const { tplId, winnerPlayerId, loserPlayerId } = req.body || {}
+  if (!tplId || !winnerPlayerId) return res.status(400).json({ error: 'tplId and winnerPlayerId required' })
+  if (db.available()) {
+    try {
+      const mr = await db.query('select club_id, player_ids from matches where id=$1', [id])
+      if (mr.rowCount === 0) return res.status(404).json({ error: 'match not found' })
+      const clubId = mr.rows[0].club_id
+      const tr = await db.query('select options from club_match_templates where id=$1 and club_id=$2', [tplId, clubId])
+      if (tr.rowCount === 0) return res.status(404).json({ error: 'template not found' })
+      const opts = tr.rows[0].options || {}
+      const mIds = (opts.bracket && opts.bracket.matchIds) || []
+      const idx = mIds.indexOf(id)
+      if (idx === -1) return res.status(400).json({ error: 'match not in template bracket' })
+      // 記錄勝者
+      const winners = Array.isArray(opts.bracket?.winners_by_round) ? opts.bracket.winners_by_round : []
+      winners[idx] = Number(winnerPlayerId)
+      opts.bracket = Object.assign({}, opts.bracket || {}, { winners_by_round: winners })
+      // 推進到下一場
+      let nextAssigned = null
+      if (idx === 0 && mIds[1]) {
+        const next = await db.query('select player_ids from matches where id=$1', [mIds[1]])
+        const arr = (next.rows[0] && next.rows[0].player_ids) || []
+        const merged = arr.length >= 2 ? arr : [...arr, Number(winnerPlayerId)]
+        await db.query('update matches set player_ids=$1 where id=$2', [JSON.stringify(merged), mIds[1]])
+        nextAssigned = { matchId: mIds[1], playerIds: merged }
+      } else if (idx === 1 && mIds[2]) {
+        if (typeof loserPlayerId === 'number') opts.bracket.third_place = Number(loserPlayerId)
+        const next = await db.query('select player_ids from matches where id=$1', [mIds[2]])
+        const arr = (next.rows[0] && next.rows[0].player_ids) || []
+        const merged = arr.length >= 2 ? arr : [...arr, Number(winnerPlayerId)]
+        await db.query('update matches set player_ids=$1 where id=$2', [JSON.stringify(merged), mIds[2]])
+        nextAssigned = { matchId: mIds[2], playerIds: merged }
+      } else if (idx === 2 && mIds[3]) {
+        const next = await db.query('select player_ids from matches where id=$1', [mIds[3]])
+        const arr = (next.rows[0] && next.rows[0].player_ids) || []
+        const merged = arr.length >= 2 ? arr : [...arr, Number(winnerPlayerId)]
+        await db.query('update matches set player_ids=$1 where id=$2', [JSON.stringify(merged), mIds[3]])
+        nextAssigned = { matchId: mIds[3], playerIds: merged }
+      } else if (idx === 3) {
+        opts.bracket.champion = Number(winnerPlayerId)
+        if (typeof loserPlayerId === 'number') opts.bracket.runner_up = Number(loserPlayerId)
+      }
+      await db.query('update club_match_templates set options=$2 where id=$1', [tplId, opts])
+      return res.json({ ok: true, nextAssigned, bracket: opts.bracket })
+    } catch (e) {
+      return res.status(500).json({ error: 'winner submit failed' })
+    }
+  }
+  res.json({ ok: true })
+})
 // ----- Mobile match page (under /api, top-level redirect provided in index.js) -----
 router.get('/m/:id', async (req, res) => {
   const id = parseInt(req.params.id, 10)
   res.set('Content-Security-Policy', [
+    "default-src 'self'",
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline'",
     "style-src 'self' 'unsafe-inline'",
@@ -867,6 +920,10 @@ button{cursor:pointer}
   <div style="margin-top:10px"><button onclick="submitFrame()">提交此局</button>
   <button onclick="refresh()">更新</button>
   <button onclick="share()">分享</button></div>
+  <div class="row" style="margin-top:10px">
+    <div><label>模板ID（推進用）</label><input id="tplIdWinner" type="number" min="1"></div>
+    <div><button onclick="submitWinner(1)">P1勝</button> <button onclick="submitWinner(2)">P2勝</button></div>
+  </div>
 </div>
 <div class="card"><div id="log">等待操作…</div></div>
 <script>
@@ -882,6 +939,7 @@ async function refresh(){
     document.getElementById('p1Label').textContent='P1(' + d.playerIds[0] + ') 分數'
     document.getElementById('p2Label').textContent='P2(' + d.playerIds[1] + ') 分數'
   }
+  window._players = d.playerIds || []
 }
 async function submitFrame(){
   const frameNo=Number(document.getElementById('frameNo').value)
@@ -895,6 +953,15 @@ function share(){
   const url=location.href
   navigator.clipboard&&navigator.clipboard.writeText(url)
   alert('分享連結已複製：'+url)
+}
+async function submitWinner(sel){
+  const tpl=Number(document.getElementById('tplIdWinner').value||0)
+  if(!tpl){ alert('請先輸入模板ID'); return }
+  const winner=(window._players||[])[sel-1]
+  const loser=(window._players||[])[sel===1?1:0]
+  if(!winner){ alert('尚未載入選手'); return }
+  const r=await fetch('/api/matches/'+id+'/winner',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tplId:tpl,winnerPlayerId:winner,loserPlayerId:loser})})
+  const t=await r.text();try{log(JSON.parse(t))}catch{log(t)}
 }
 refresh()
 </script>`)
