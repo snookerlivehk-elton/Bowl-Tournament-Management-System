@@ -37,7 +37,7 @@ app.get('/', (req, res) => {
   res.json({
     name: 'Bowl Tournament Management System',
     version: pkg.version,
-    endpoints: ['/health', '/api/version', '/api/auth/login', '/api/admin/login', '/api/clubs', '/api/matches', '/api/admin/titles', '/api/admin/roles', '/api/admin/clubs', '/api/admin/countries', '/api/players', '/api/integrations/ocr/scoreboard', '/player/invite?name=Alex&nationality=HKG', '/join/:token']
+    endpoints: ['/health', '/api/version', '/api/auth/login', '/api/admin/login', '/api/super/clubs', '/api/super/countries', '/api/super/club-admin/link', '/api/club/profile', '/api/club/logo', '/api/clubs', '/api/matches', '/api/admin/titles', '/api/admin/roles', '/api/admin/clubs', '/api/players', '/api/integrations/ocr/scoreboard', '/player/invite?name=Alex&nationality=HKG', '/join/:token']
   })
 })
 
@@ -50,6 +50,28 @@ app.get('/admin/login.html', (req, res) => {
     "connect-src 'self'"
   ].join('; '))
   res.sendFile(path.join(__dirname, 'public', 'admin', 'login.html'))
+})
+
+// Super admin page
+app.get('/super-admin/index.html', (req, res) => {
+  res.set('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "connect-src 'self'"
+  ].join('; '))
+  res.sendFile(path.join(__dirname, 'public', 'super-admin', 'index.html'))
+})
+
+// Club admin page
+app.get('/club-admin/login.html', (req, res) => {
+  res.set('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "connect-src 'self'"
+  ].join('; '))
+  res.sendFile(path.join(__dirname, 'public', 'club-admin', 'login.html'))
 })
 
 // 靜態資源

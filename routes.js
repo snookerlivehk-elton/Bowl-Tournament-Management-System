@@ -49,7 +49,22 @@ function adminAuth(req, res, next) {
   const m = h.match(/^Bearer\s+(.+)$/i)
   if (!m) return res.status(401).json({ error: 'unauthorized' })
   try {
-    jwt.verify(m[1], ADMIN_JWT_SECRET)
+    const p = jwt.verify(m[1], ADMIN_JWT_SECRET)
+    if (p.role !== 'super') return res.status(401).json({ error: 'unauthorized' })
+    return next()
+  } catch (e) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+}
+
+function clubAuth(req, res, next) {
+  const h = req.get('authorization') || ''
+  const m = h.match(/^Bearer\s+(.+)$/i)
+  if (!m) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    const p = jwt.verify(m[1], ADMIN_JWT_SECRET)
+    if (p.role !== 'club-admin' || !p.clubId) return res.status(401).json({ error: 'unauthorized' })
+    req.clubId = p.clubId
     return next()
   } catch (e) {
     return res.status(401).json({ error: 'unauthorized' })
@@ -60,7 +75,7 @@ router.post('/admin/login', (req, res) => {
   const { email, password } = req.body || {}
   if (!email || !password) return res.status(400).json({ error: 'email and password required' })
   if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'invalid credentials' })
-  const token = jwt.sign({ sub: email, role: 'admin' }, ADMIN_JWT_SECRET, { expiresIn: '12h' })
+  const token = jwt.sign({ sub: email, role: 'super' }, ADMIN_JWT_SECRET, { expiresIn: '12h' })
   res.json({ token })
 })
 router.get('/admin/titles', adminAuth, async (req, res) => {
@@ -183,7 +198,7 @@ router.post('/admin/clubs/:id/logo', adminAuth, express.raw({ type: ['image/png'
 })
 
 // ----- Countries CRUD (admin protected) -----
-router.get('/admin/countries', adminAuth, async (req, res) => {
+router.get('/super/countries', adminAuth, async (req, res) => {
   if (db.available()) {
     try{
       const r = await db.query('select code,name,local_name,flag_url,enabled,created_at from countries where enabled=true order by name asc')
@@ -199,7 +214,7 @@ router.get('/admin/countries', adminAuth, async (req, res) => {
   res.json(list)
 })
 
-router.post('/admin/countries', adminAuth, async (req, res) => {
+router.post('/super/countries', adminAuth, async (req, res) => {
   const { code, name, localName, flagUrl, enabled } = req.body || {}
   if (!code || !name) return res.status(400).json({ error: 'code and name required' })
   if (db.available()) {
@@ -221,7 +236,7 @@ router.post('/admin/countries', adminAuth, async (req, res) => {
   res.status(201).json(item)
 })
 
-router.put('/admin/countries/:code', adminAuth, async (req, res) => {
+router.put('/super/countries/:code', adminAuth, async (req, res) => {
   const code = (req.params.code || '').toUpperCase()
   const { name, localName, flagUrl, enabled } = req.body || {}
   if (db.available()) {
@@ -241,7 +256,7 @@ router.put('/admin/countries/:code', adminAuth, async (req, res) => {
   res.json(mem.countries[idx])
 })
 
-router.delete('/admin/countries/:code', adminAuth, async (req, res) => {
+router.delete('/super/countries/:code', adminAuth, async (req, res) => {
   const code = (req.params.code || '').toUpperCase()
   if (db.available()) {
     try{
@@ -260,9 +275,26 @@ router.delete('/admin/countries/:code', adminAuth, async (req, res) => {
   res.status(204).end()
 })
 
+router.get('/super/clubs', adminAuth, async (req, res) => {
+  if (db.available()) {
+    const r = await db.query('select id,name,region,created_at from clubs order by id desc')
+    return res.json(r.rows)
+  }
+  res.json(mem.clubs)
+})
+
+router.post('/super/club-admin/link', adminAuth, async (req, res) => {
+  const { clubId } = req.body || {}
+  const id = parseInt(clubId, 10)
+  if (!id) return res.status(400).json({ error: 'clubId required' })
+  const token = jwt.sign({ role: 'club-admin', clubId: id }, ADMIN_JWT_SECRET, { expiresIn: '12h' })
+  const url = `${req.protocol}://${req.get('host')}/club-admin/login.html#token=${token}`
+  res.json({ token, url })
+})
+
 // Upload flag image (admin protected) - store under public/flags/<ISO3>.<ext>
 router.post(
-  '/admin/countries/:code/flag',
+  '/super/countries/:code/flag',
   adminAuth,
   express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: '1mb' }),
   async (req, res) => {
@@ -292,6 +324,62 @@ router.post(
     }
   }
 )
+
+// ----- Club Admin profile (by token clubId) -----
+router.get('/club/profile', clubAuth, async (req, res) => {
+  const id = req.clubId
+  if (db.available()) {
+    const r = await db.query('select id,name,region,city,address,contact_name,contact_phone,contact_email,logo_url,created_at from clubs where id=$1', [id])
+    if (r.rowCount === 0) return res.status(404).json({ error: 'not found' })
+    return res.json(r.rows[0])
+  }
+  const c = mem.clubs.find(x => x.id === id)
+  if (!c) return res.status(404).json({ error: 'not found' })
+  res.json(c)
+})
+
+router.put('/club/profile', clubAuth, async (req, res) => {
+  const id = req.clubId
+  const { name, region, city, address, contactName, contactPhone, contactEmail } = req.body || {}
+  if (db.available()) {
+    try {
+      const r = await db.query('update clubs set name=coalesce($2,name), region=$3, city=$4, address=$5, contact_name=$6, contact_phone=$7, contact_email=$8 where id=$1 returning id,name,region,city,address,contact_name,contact_phone,contact_email,logo_url,created_at', [id, name || null, region || null, city || null, address || null, contactName || null, contactPhone || null, contactEmail || null])
+      if (r.rowCount === 0) return res.status(404).json({ error: 'not found' })
+      return res.json(r.rows[0])
+    } catch (e) {
+      if (e && e.code === '42703') { try { await ensureClubColumns(); const r2 = await db.query('update clubs set name=coalesce($2,name), region=$3, city=$4, address=$5, contact_name=$6, contact_phone=$7, contact_email=$8 where id=$1 returning id,name,region,city,address,contact_name,contact_phone,contact_email,logo_url,created_at', [id, name || null, region || null, city || null, address || null, contactName || null, contactPhone || null, contactEmail || null]); if (r2.rowCount === 0) return res.status(404).json({ error: 'not found' }); return res.json(r2.rows[0]) } catch (e2) { return res.status(500).json({ error: 'clubs columns missing' }) } }
+      return res.status(500).json({ error: 'update club failed' })
+    }
+  }
+  const idx = mem.clubs.findIndex(c => c.id === id)
+  if (idx === -1) return res.status(404).json({ error: 'not found' })
+  mem.clubs[idx] = { ...mem.clubs[idx], ...(name ? { name } : {}), region: region || mem.clubs[idx].region, city: city || mem.clubs[idx].city, address: address || mem.clubs[idx].address, contact_name: contactName || mem.clubs[idx].contact_name, contact_phone: contactPhone || mem.clubs[idx].contact_phone, contact_email: contactEmail || mem.clubs[idx].contact_email }
+  res.json(mem.clubs[idx])
+})
+
+router.post('/club/logo', clubAuth, express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: '1mb' }), async (req, res) => {
+  const id = req.clubId
+  try {
+    const mime = req.get('content-type') || ''
+    const exts = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' }
+    const ext = exts[mime]
+    if (!ext) return res.status(415).json({ error: 'unsupported media type' })
+    const dir = path.join(__dirname, 'public', 'logos')
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    const filePath = path.join(dir, `${id}${ext}`)
+    fs.writeFileSync(filePath, req.body)
+    const url = `/logos/${id}${ext}`
+    if (db.available()) {
+      try { await ensureClubColumns(); await db.query('update clubs set logo_url=$2 where id=$1', [id, url]) } catch (e) { return res.status(500).json({ error: 'update logo failed' }) }
+    } else {
+      const idx = mem.clubs.findIndex(c => c.id === id)
+      if (idx >= 0) mem.clubs[idx].logo_url = url
+    }
+    return res.status(201).json({ logo_url: url })
+  } catch (e) {
+    return res.status(500).json({ error: 'upload logo failed' })
+  }
+})
 
 router.post('/players', async (req, res) => {
   const { name, nationality, photoUrl } = req.body || {}

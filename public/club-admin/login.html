@@ -1,0 +1,39 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>球會後台（Club Admin）</title>
+<style>body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:16px}.card{border:1px solid #ddd;border-radius:8px;padding:12px;margin:12px 0}input,button{padding:10px;font-size:16px}button{cursor:pointer}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left}#log{background:#0b1020;color:#e8e8e8;border-radius:8px;padding:10px;white-space:pre-wrap}</style>
+<h2>球會後台（Club Admin）</h2>
+<div class="card">
+  <div><label>Token（若未帶入請貼上）</label><br><input id="tokenInput" style="width:100%"></div>
+  <div style="margin-top:10px"><button onclick="useToken()">使用 Token</button> <span id="status">未登入</span></div>
+</div>
+<div class="card" id="profile" style="display:none">
+  <h3>球會基本資料</h3>
+  <div><label>名稱</label><br><input id="name"></div>
+  <div><label>地區（ISO3，可空）</label><br><input id="region"></div>
+  <div><label>城市</label><br><input id="city"></div>
+  <div><label>地址</label><br><input id="address"></div>
+  <div><label>聯絡人</label><br><input id="contactName"></div>
+  <div><label>電話</label><br><input id="contactPhone"></div>
+  <div><label>Email</label><br><input id="contactEmail"></div>
+  <div style="margin-top:10px"><button onclick="saveProfile()">儲存基本資料</button></div>
+</div>
+<div class="card" id="logo" style="display:none">
+  <h3>Logo 管理</h3>
+  <div><input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp"> <button onclick="uploadLogo()">上傳 Logo</button></div>
+  <div style="margin-top:8px"><img id="logoPreview" style="height:32px"></div>
+</div>
+<div class="card"><div id="log">等待操作…</div></div>
+<script>
+function log(x){document.getElementById('log').textContent=(typeof x==='string')?x:JSON.stringify(x,null,2)}
+function tok(){return localStorage.getItem('club_token')||''}
+function setTok(t){localStorage.setItem('club_token',t)}
+function updateUI(){const t=tok();document.getElementById('status').textContent=t?'已登入':'未登入';document.getElementById('profile').style.display=t?'block':'none';document.getElementById('logo').style.display=t?'block':'none'}
+function useToken(){const t=document.getElementById('tokenInput').value.trim();if(!t){log('請貼上 token');return}setTok(t);updateUI();loadProfile()}
+async function authedFetch(url,opts){const h=Object.assign({},(opts&&opts.headers)||{}, {'Authorization':'Bearer '+tok(),'Content-Type':'application/json'});const r=await fetch(url,Object.assign({},opts||{}, {headers:h}));if(!r.ok){const txt=await r.text();try{log(JSON.parse(txt))}catch{log(txt)};throw new Error('request failed')}return r.json()}
+async function loadProfile(){const d=await authedFetch('/api/club/profile',{method:'GET'});document.getElementById('name').value=d.name||'';document.getElementById('region').value=d.region||'';document.getElementById('city').value=d.city||'';document.getElementById('address').value=d.address||'';document.getElementById('contactName').value=d.contact_name||'';document.getElementById('contactPhone').value=d.contact_phone||'';document.getElementById('contactEmail').value=d.contact_email||'';if(d.logo_url){document.getElementById('logoPreview').src=d.logo_url}}
+async function saveProfile(){const body={name:document.getElementById('name').value.trim()||null,region:(document.getElementById('region').value||'').toUpperCase()||null,city:document.getElementById('city').value.trim()||null,address:document.getElementById('address').value.trim()||null,contactName:document.getElementById('contactName').value.trim()||null,contactPhone:document.getElementById('contactPhone').value.trim()||null,contactEmail:document.getElementById('contactEmail').value.trim()||null};const d=await authedFetch('/api/club/profile',{method:'PUT',body:JSON.stringify(body)});log(d);loadProfile()}
+async function uploadLogo(){const f=document.getElementById('logoFile').files[0];if(!f){log('請選取圖片');return}const r=await fetch('/api/club/logo',{method:'POST',headers:{'Authorization':'Bearer '+tok(),'Content-Type':f.type},body:f});const d=await r.json();log(d);loadProfile()}
+if(location.hash.startsWith('#token=')){const t=location.hash.slice(7);document.getElementById('tokenInput').value=t;setTok(t);updateUI();loadProfile()}
+updateUI()
+</script>

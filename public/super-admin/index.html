@@ -1,0 +1,46 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>總後台（Super Admin）</title>
+<style>body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:16px}.card{border:1px solid #ddd;border-radius:8px;padding:12px;margin:12px 0}input,button{padding:10px;font-size:16px}button{cursor:pointer}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left}#log{background:#0b1020;color:#e8e8e8;border-radius:8px;padding:10px;white-space:pre-wrap}</style>
+<h2>總後台（Super Admin）</h2>
+<div class="card">
+  <div><label>Email</label><br><input id="email"></div>
+  <div><label>Password</label><br><input id="password" type="password"></div>
+  <div style="margin-top:10px">
+    <button onclick="login()">登入</button>
+    <button onclick="logout()">登出</button>
+    <span id="status">未登入</span>
+  </div>
+</div>
+<div class="card" id="clubs" style="display:none">
+  <h3>球會列表與登入連結</h3>
+  <div style="margin-bottom:8px">
+    <button onclick="loadClubs()">重新載入</button>
+  </div>
+  <table><thead><tr><th>ID</th><th>名稱</th><th>地區</th><th>建立時間</th><th>操作</th></tr></thead><tbody id="clubTable"></tbody></table>
+</div>
+<div class="card" id="countries" style="display:none">
+  <h3>國家代碼（簡版）</h3>
+  <div><label>代碼</label><br><input id="code"></div>
+  <div><label>名稱</label><br><input id="name"></div>
+  <div style="margin-top:8px">
+    <button onclick="addCountry()">新增</button>
+    <button onclick="loadCountries()">重新載入</button>
+  </div>
+  <table><thead><tr><th>代碼</th><th>名稱</th></tr></thead><tbody id="ctTable"></tbody></table>
+</div>
+<div class="card"><div id="log">等待操作…</div></div>
+<script>
+function log(x){document.getElementById('log').textContent=(typeof x==='string')?x:JSON.stringify(x,null,2)}
+function token(){return localStorage.getItem('super_token')||''}
+function setToken(t){localStorage.setItem('super_token', t)}
+function updateUI(){const t=token();document.getElementById('status').textContent=t?'已登入':'未登入';document.getElementById('clubs').style.display=t?'block':'none';document.getElementById('countries').style.display=t?'block':'none'}
+async function login(){const email=document.getElementById('email').value.trim();const password=document.getElementById('password').value;const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});const d=await r.json();if(d.token){setToken(d.token);updateUI();loadClubs();loadCountries();log({login:'ok'})}else{log(d)}}
+function logout(){localStorage.removeItem('super_token');updateUI();log('已登出')}
+async function authedFetch(url,opts){const h=Object.assign({},(opts&&opts.headers)||{}, {'Authorization':'Bearer '+token(),'Content-Type':'application/json'});const r=await fetch(url,Object.assign({},opts||{}, {headers:h}));if(!r.ok){const txt=await r.text();try{log(JSON.parse(txt))}catch{log(txt)};throw new Error('request failed')}return r.json()}
+async function loadClubs(){const list=await authedFetch('/api/super/clubs',{method:'GET'});const tbody=document.getElementById('clubTable');tbody.innerHTML='';for(const c of list){const tr=document.createElement('tr');tr.innerHTML=`<td>${c.id}</td><td>${c.name}</td><td>${c.region||''}</td><td>${c.created_at||''}</td><td><button onclick="invite(${c.id})">生成球會登入連結</button></td>`;tbody.appendChild(tr)}log({clubs:list.length})}
+async function invite(id){const d=await authedFetch('/api/super/club-admin/link',{method:'POST',body:JSON.stringify({clubId:id})});log(d);alert('登入連結已生成：\\n'+d.url)}
+async function loadCountries(){const list=await authedFetch('/api/super/countries',{method:'GET'});const tbody=document.getElementById('ctTable');tbody.innerHTML='';for(const c of list){const tr=document.createElement('tr');tr.innerHTML=`<td>${c.code}</td><td>${c.name}</td>`;tbody.appendChild(tr)}}
+async function addCountry(){const code=document.getElementById('code').value.trim().toUpperCase();const name=document.getElementById('name').value.trim();if(!code||!name){log('code and name required');return}const d=await authedFetch('/api/super/countries',{method:'POST',body:JSON.stringify({code,name})});log(d);loadCountries()}
+updateUI()
+</script>
