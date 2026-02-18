@@ -40,6 +40,23 @@ async function ensureCountries() {
   }
 }
 
+async function ensureClubTemplates() {
+  if (db.available()) {
+    await db.query(`create table if not exists club_match_templates (
+      id serial primary key,
+      club_id integer not null,
+      name text not null,
+      mode text not null default 'friendly',
+      participant_kind text not null default 'single',
+      team_size integer,
+      frames_per_match integer not null default 1,
+      options jsonb,
+      enabled boolean not null default true,
+      created_at timestamptz default now()
+    )`)
+  }
+}
+
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || ''
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''
 const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'change-me'
@@ -379,6 +396,43 @@ router.post('/club/logo', clubAuth, express.raw({ type: ['image/png', 'image/jpe
   } catch (e) {
     return res.status(500).json({ error: 'upload logo failed' })
   }
+})
+
+router.get('/club/templates', clubAuth, async (req, res) => {
+  const id = req.clubId
+  if (db.available()) {
+    try { await ensureClubTemplates(); const r = await db.query('select id,club_id,name,mode,participant_kind,team_size,frames_per_match,options,enabled,created_at from club_match_templates where club_id=$1 order by id desc', [id]); return res.json(r.rows) } catch (e) { return res.status(500).json({ error: 'list templates failed' }) }
+  }
+  res.json([])
+})
+
+router.post('/club/templates', clubAuth, async (req, res) => {
+  const id = req.clubId
+  const { name, mode, participantKind, teamSize, framesPerMatch, options, enabled } = req.body || {}
+  if (!name) return res.status(400).json({ error: 'name required' })
+  if (db.available()) {
+    try { await ensureClubTemplates(); const r = await db.query('insert into club_match_templates(club_id,name,mode,participant_kind,team_size,frames_per_match,options,enabled) values($1,$2,$3,$4,$5,$6,$7,$8) returning id,club_id,name,mode,participant_kind,team_size,frames_per_match,options,enabled,created_at', [id, name, mode || 'friendly', participantKind || 'single', teamSize || null, framesPerMatch || 1, options || null, enabled === false ? false : true]); return res.status(201).json(r.rows[0]) } catch (e) { return res.status(500).json({ error: 'create template failed' }) }
+  }
+  res.status(201).json({ id: Date.now(), club_id: id, name, mode: mode || 'friendly', participant_kind: participantKind || 'single', team_size: teamSize || null, frames_per_match: framesPerMatch || 1, options: options || null, enabled: enabled !== false })
+})
+
+router.put('/club/templates/:tplId', clubAuth, async (req, res) => {
+  const clubId = req.clubId
+  const tplId = parseInt(req.params.tplId, 10)
+  const { name, mode, participantKind, teamSize, framesPerMatch, options, enabled } = req.body || {}
+  if (db.available()) {
+    try { await ensureClubTemplates(); const r = await db.query('update club_match_templates set name=coalesce($3,name), mode=coalesce($4,mode), participant_kind=coalesce($5,participant_kind), team_size=$6, frames_per_match=coalesce($7,frames_per_match), options=$8, enabled=coalesce($9,enabled) where id=$1 and club_id=$2 returning id,club_id,name,mode,participant_kind,team_size,frames_per_match,options,enabled,created_at', [tplId, clubId, name || null, mode || null, participantKind || null, teamSize || null, framesPerMatch || null, options || null, typeof enabled === 'boolean' ? enabled : null]); if (r.rowCount === 0) return res.status(404).json({ error: 'not found' }); return res.json(r.rows[0]) } catch (e) { return res.status(500).json({ error: 'update template failed' }) }
+  }
+  res.json({ id: tplId })
+})
+
+router.delete('/club/templates/:tplId', clubAuth, async (req, res) => {
+  const clubId = req.clubId
+  const tplId = parseInt(req.params.tplId, 10)
+  if (db.available()) {
+    try { await ensureClubTemplates(); const r = await db.query('delete from club_match_templates where id=$1 and club_id=$2', [tplId, clubId]); if (r.rowCount === 0) return res.status(404).json({ error: 'not found' }); return res.status(204).end() } catch (e) { return res.status(500).json({ error: 'delete template failed' }) }
+  }
+  return res.status(204).end()
 })
 
 router.post('/players', async (req, res) => {

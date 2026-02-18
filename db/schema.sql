@@ -42,6 +42,19 @@ create table if not exists countries (
   created_at timestamptz default now()
 );
 
+create table if not exists club_match_templates (
+  id serial primary key,
+  club_id integer not null,
+  name text not null,
+  mode text not null default 'friendly',
+  participant_kind text not null default 'single',
+  team_size integer,
+  frames_per_match integer not null default 1,
+  options jsonb,
+  enabled boolean not null default true,
+  created_at timestamptz default now()
+);
+
 create table if not exists matches (
   id serial primary key,
   competition_id int,
