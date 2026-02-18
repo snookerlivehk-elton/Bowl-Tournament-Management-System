@@ -115,17 +115,27 @@ async function loadClubs(){
     // 同步更新地區下拉：優先使用 countries 清單
     try{
       countriesCache = await authedFetch('/api/admin/countries', { method:'GET' })
-      const dl = document.getElementById('regionOptions')
       const input = document.getElementById('clubRegion')
-      const current = input.value
-      dl.innerHTML = ''
-      for(const ct of countriesCache){
-        const opt = document.createElement('option')
-        opt.value = ct.code
-        opt.label = `${ct.code} - ${ct.name}`
-        dl.appendChild(opt)
+      const render = (q) => {
+        const dl = document.getElementById('regionOptions')
+        const query = (q||'').trim()
+        const up = query.toUpperCase()
+        const low = query.toLowerCase()
+        const items = countriesCache.filter(ct =>
+          !query ||
+          ct.code.startsWith(up) ||
+          (ct.name||'').toLowerCase().includes(low)
+        )
+        dl.innerHTML = ''
+        for(const ct of items){
+          const opt = document.createElement('option')
+          opt.value = ct.code
+          opt.label = `${ct.code} - ${ct.name}`
+          dl.appendChild(opt)
+        }
       }
-      if(current && countriesCache.find(x=>x.code===current.toUpperCase())) input.value = current.toUpperCase()
+      input.addEventListener('input', e => render(e.target.value))
+      render(input.value)
     }catch(e){}
   }catch(e){}
 }
