@@ -5,6 +5,8 @@ WORKDIR /app
 COPY package*.json ./
 # prefer reproducible install; fallback to install when no lockfile
 RUN npm ci --omit=dev || npm install --omit=dev
+# ensure critical runtime deps present even if lock/cache失效
+RUN npm install --omit=dev jsonwebtoken@^9.0.2
 # copy app sources
 COPY . .
 ENV NODE_ENV=production
