@@ -1,0 +1,97 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>管理登入</title>
+<style>
+body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:16px}
+.card{border:1px solid #ddd;border-radius:8px;padding:12px;margin:12px 0}
+input,button{padding:10px;font-size:16px}
+button{cursor:pointer}
+.row{display:flex;gap:12px;flex-wrap:wrap}
+.row>div{flex:1;min-width:180px}
+#log{background:#0b1020;color:#e8e8e8;border-radius:8px;padding:10px;white-space:pre-wrap}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #ddd;padding:8px;text-align:left}
+</style>
+<h2>管理登入</h2>
+<div class="card" id="auth">
+  <div class="row">
+    <div><label>Email</label><br><input id="email" value=""></div>
+    <div><label>Password</label><br><input id="password" type="password" value=""></div>
+  </div>
+  <div style="margin-top:10px">
+    <button onclick="login()">登入</button>
+    <button onclick="logout()">登出</button>
+  </div>
+  <div style="margin-top:10px">狀態：<span id="status">未登入</span></div>
+</div>
+<div class="card" id="clubs" style="display:none">
+  <h3>球會管理</h3>
+  <div class="row">
+    <div><label>球會名稱</label><br><input id="clubName"></div>
+    <div><label>地區（可空）</label><br><input id="clubRegion"></div>
+  </div>
+  <div style="margin-top:10px">
+    <button onclick="createClub()">建立球會</button>
+    <button onclick="loadClubs()">重新載入</button>
+  </div>
+  <div style="margin-top:10px">
+    <table>
+      <thead><tr><th>ID</th><th>名稱</th><th>地區</th><th>建立時間</th></tr></thead>
+      <tbody id="clubTable"></tbody>
+    </table>
+  </div>
+</div>
+<div class="card"><div id="log">等待操作…</div></div>
+<script>
+function log(x){document.getElementById('log').textContent=(typeof x==='string')?x:JSON.stringify(x,null,2)}
+function token(){return localStorage.getItem('admin_token')||''}
+function setToken(t){localStorage.setItem('admin_token', t)}
+function updateUI(){
+  const t = token()
+  document.getElementById('status').textContent = t ? '已登入' : '未登入'
+  document.getElementById('clubs').style.display = t ? 'block' : 'none'
+}
+async function login(){
+  const email = document.getElementById('email').value.trim()
+  const password = document.getElementById('password').value
+  try{
+    const r = await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})})
+    const d = await r.json()
+    if(d.token){ setToken(d.token); updateUI(); log({login:'ok'}) ; loadClubs() } else { log(d) }
+  }catch(e){ log('login error') }
+}
+function logout(){ localStorage.removeItem('admin_token'); updateUI(); log('已登出') }
+async function authedFetch(url, opts){
+  const h = Object.assign({}, (opts&&opts.headers)||{}, { 'Authorization':'Bearer '+token(), 'Content-Type':'application/json' })
+  const r = await fetch(url, Object.assign({}, opts||{}, { headers: h }))
+  if(!r.ok){
+    const txt = await r.text()
+    try{ log(JSON.parse(txt)) }catch{ log(txt) }
+    throw new Error('request failed')
+  }
+  return r.json()
+}
+async function loadClubs(){
+  try{
+    const list = await authedFetch('/api/admin/clubs', { method:'GET' })
+    const tbody = document.getElementById('clubTable')
+    tbody.innerHTML = ''
+    for(const c of list){
+      const tr = document.createElement('tr')
+      tr.innerHTML = `<td>${c.id}</td><td>${c.name}</td><td>${c.region||''}</td><td>${c.created_at||''}</td>`
+      tbody.appendChild(tr)
+    }
+    log({clubs:list.length})
+  }catch(e){}
+}
+async function createClub(){
+  const name = document.getElementById('clubName').value.trim()
+  const region = document.getElementById('clubRegion').value.trim() || null
+  if(!name){ log('name required'); return }
+  try{
+    const d = await authedFetch('/api/admin/clubs', { method:'POST', body: JSON.stringify({ name, region }) })
+    log(d); loadClubs()
+  }catch(e){}
+}
+updateUI()
+</script>
