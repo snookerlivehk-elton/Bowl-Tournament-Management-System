@@ -41,9 +41,6 @@ app.get('/', (req, res) => {
   })
 })
 
-// 靜態資源
-app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }))
-
 // Admin login page with relaxed CSP to allow inline script
 app.get('/admin/login.html', (req, res) => {
   res.set('Content-Security-Policy', [
@@ -54,6 +51,9 @@ app.get('/admin/login.html', (req, res) => {
   ].join('; '))
   res.sendFile(path.join(__dirname, 'public', 'admin', 'login.html'))
 })
+
+// 靜態資源
+app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }))
 
 // Convenience redirects so callers不必知道 /api 前綴
 app.get('/player/invite', (req, res) => {
