@@ -1,4 +1,5 @@
 FROM node:18-alpine
+ARG REBUILD_TS=2026-02-18-20-35
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install --production
