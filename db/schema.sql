@@ -51,4 +51,4 @@ create table if not exists match_invites (
   expires_at timestamptz
 );
 
-alter table if not exists frames add column if not exists scores jsonb;
+alter table if exists frames add column if not exists scores jsonb;

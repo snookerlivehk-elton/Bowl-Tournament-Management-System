@@ -117,7 +117,27 @@ router.post('/admin/patch/frames-scores', async (req, res) => {
     if (check.rowCount > 0) {
       return res.status(200).json({ status: 'exists' })
     }
-    await db.query('alter table if not exists frames add column if not exists scores jsonb')
+    await db.query('alter table if exists frames add column if not exists scores jsonb')
+    return res.status(201).json({ status: 'added' })
+  } catch (e) {
+    return res.status(500).json({ error: 'patch failed' })
+  }
+})
+
+// GET 版本（方便從瀏覽器觸發），同樣以 PATCH_KEY 保護
+router.get('/admin/patch/frames-scores', async (req, res) => {
+  const key = process.env.PATCH_KEY
+  const provided = req.get('x-patch-key') || req.query.key
+  if (!key || !provided || provided !== key) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  if (!db.available()) {
+    return res.status(503).json({ error: 'db unavailable' })
+  }
+  try {
+    const check = await db.query("select 1 from information_schema.columns where table_name='frames' and column_name='scores'")
+    if (check.rowCount > 0) return res.status(200).json({ status: 'exists' })
+    await db.query('alter table if exists frames add column if not exists scores jsonb')
     return res.status(201).json({ status: 'added' })
   } catch (e) {
     return res.status(500).json({ error: 'patch failed' })
@@ -257,7 +277,7 @@ router.get('/matches/:id/summary', async (req, res) => {
     } catch (e) {
       if (e && e.code === '42703') {
         try {
-          await db.query('alter table if not exists frames add column if not exists scores jsonb')
+          await db.query('alter table if exists frames add column if not exists scores jsonb')
           const mr2 = await db.query('select id, player_ids, frames_per_match, status from matches where id=$1', [id])
           if (mr2.rowCount === 0) return res.status(404).json({ error: 'match not found' })
           const match2 = mr2.rows[0]
@@ -296,7 +316,7 @@ router.post('/matches/:id/scores', async (req, res) => {
     } catch (e) {
       if (e && e.code === '42703') {
         try {
-          await db.query('alter table if not exists frames add column if not exists scores jsonb')
+          await db.query('alter table if exists frames add column if not exists scores jsonb')
           const fr2 = await db.query('select id from frames where match_id=$1 and frame_no=$2', [id, frameNo])
           if (fr2.rowCount === 0) {
             const ins2 = await db.query('insert into frames(match_id,frame_no,scores) values($1,$2,$3) returning id', [id, frameNo, JSON.stringify(scores)])
