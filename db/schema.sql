@@ -26,6 +26,15 @@ create table if not exists clubs (
   created_at timestamptz default now()
 );
 
+create table if not exists countries (
+  code text primary key,
+  name text not null,
+  local_name text,
+  flag_url text,
+  enabled boolean not null default true,
+  created_at timestamptz default now()
+);
+
 create table if not exists matches (
   id serial primary key,
   competition_id int,

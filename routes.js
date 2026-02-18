@@ -120,6 +120,64 @@ router.delete('/admin/clubs/:id', adminAuth, async (req, res) => {
   res.status(204).end()
 })
 
+// ----- Countries CRUD (admin protected) -----
+router.get('/admin/countries', adminAuth, async (req, res) => {
+  if (db.available()) {
+    const r = await db.query('select code,name,local_name,flag_url,enabled,created_at from countries where enabled=true order by name asc')
+    return res.json(r.rows)
+  }
+  const list = (mem.countries || []).filter(c => c.enabled !== false).sort((a,b)=>String(a.name).localeCompare(String(b.name)))
+  res.json(list)
+})
+
+router.post('/admin/countries', adminAuth, async (req, res) => {
+  const { code, name, localName, flagUrl, enabled } = req.body || {}
+  if (!code || !name) return res.status(400).json({ error: 'code and name required' })
+  if (db.available()) {
+    try{
+      const r = await db.query('insert into countries(code,name,local_name,flag_url,enabled) values($1,$2,$3,$4,$5) returning code,name,local_name,flag_url,enabled,created_at', [code.trim().toUpperCase(), name.trim(), localName || null, flagUrl || null, enabled === false ? false : true])
+      return res.status(201).json(r.rows[0])
+    }catch(e){
+      return res.status(500).json({ error: 'create country failed' })
+    }
+  }
+  if (!mem.countries) mem.countries = []
+  const exists = mem.countries.find(c => c.code === code.toUpperCase())
+  if (exists) return res.status(409).json({ error: 'country exists' })
+  const item = { code: code.toUpperCase(), name, local_name: localName || null, flag_url: flagUrl || null, enabled: enabled === false ? false : true, created_at: new Date().toISOString() }
+  mem.countries.push(item)
+  res.status(201).json(item)
+})
+
+router.put('/admin/countries/:code', adminAuth, async (req, res) => {
+  const code = (req.params.code || '').toUpperCase()
+  const { name, localName, flagUrl, enabled } = req.body || {}
+  if (db.available()) {
+    const r = await db.query('update countries set name=coalesce($2,name), local_name=$3, flag_url=$4, enabled=coalesce($5,enabled) where code=$1 returning code,name,local_name,flag_url,enabled,created_at', [code, name || null, localName || null, flagUrl || null, typeof enabled === 'boolean' ? enabled : null])
+    if (r.rowCount === 0) return res.status(404).json({ error: 'not found' })
+    return res.json(r.rows[0])
+  }
+  if (!mem.countries) mem.countries = []
+  const idx = mem.countries.findIndex(c => c.code === code)
+  if (idx === -1) return res.status(404).json({ error: 'not found' })
+  mem.countries[idx] = { ...mem.countries[idx], ...(name ? { name } : {}), local_name: localName ?? mem.countries[idx].local_name, flag_url: flagUrl ?? mem.countries[idx].flag_url, enabled: typeof enabled === 'boolean' ? enabled : mem.countries[idx].enabled }
+  res.json(mem.countries[idx])
+})
+
+router.delete('/admin/countries/:code', adminAuth, async (req, res) => {
+  const code = (req.params.code || '').toUpperCase()
+  if (db.available()) {
+    const r = await db.query('delete from countries where code=$1', [code])
+    if (r.rowCount === 0) return res.status(404).json({ error: 'not found' })
+    return res.status(204).end()
+  }
+  if (!mem.countries) mem.countries = []
+  const idx = mem.countries.findIndex(c => c.code === code)
+  if (idx === -1) return res.status(404).json({ error: 'not found' })
+  mem.countries.splice(idx, 1)
+  res.status(204).end()
+})
+
 router.post('/players', async (req, res) => {
   const { name, nationality, photoUrl } = req.body || {}
   if (!name) return res.status(400).json({ error: 'name required' })
