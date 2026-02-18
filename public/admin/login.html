@@ -28,7 +28,40 @@ th,td{border:1px solid #ddd;padding:8px;text-align:left}
   <h3>球會管理</h3>
   <div class="row">
     <div><label>球會名稱</label><br><input id="clubName"></div>
-    <div><label>地區（可空）</label><br><input id="clubRegion"></div>
+    <div>
+      <label>地區（可空）</label><br>
+      <select id="clubRegion">
+        <option value="">（留空）</option>
+        <option value="HKG">HKG - Hong Kong</option>
+        <option value="CHN">CHN - China</option>
+        <option value="TWN">TWN - Taiwan</option>
+        <option value="JPN">JPN - Japan</option>
+        <option value="KOR">KOR - Korea</option>
+        <option value="SGP">SGP - Singapore</option>
+        <option value="MAC">MAC - Macau</option>
+        <option value="MYS">MYS - Malaysia</option>
+        <option value="THA">THA - Thailand</option>
+        <option value="VNM">VNM - Vietnam</option>
+        <option value="IND">IND - India</option>
+        <option value="AUS">AUS - Australia</option>
+        <option value="NZL">NZL - New Zealand</option>
+        <option value="USA">USA - United States</option>
+        <option value="CAN">CAN - Canada</option>
+        <option value="GBR">GBR - United Kingdom</option>
+        <option value="FRA">FRA - France</option>
+        <option value="DEU">DEU - Germany</option>
+        <option value="ITA">ITA - Italy</option>
+        <option value="ESP">ESP - Spain</option>
+        <option value="NLD">NLD - Netherlands</option>
+        <option value="SWE">SWE - Sweden</option>
+        <option value="NOR">NOR - Norway</option>
+        <option value="FIN">FIN - Finland</option>
+        <option value="RUS">RUS - Russia</option>
+        <option value="BRA">BRA - Brazil</option>
+        <option value="MEX">MEX - Mexico</option>
+        <option value="ZAF">ZAF - South Africa</option>
+      </select>
+    </div>
   </div>
   <div style="margin-top:10px">
     <button onclick="createClub()">建立球會</button>
@@ -86,10 +119,13 @@ async function loadClubs(){
 }
 async function createClub(){
   const name = document.getElementById('clubName').value.trim()
-  const region = document.getElementById('clubRegion').value.trim() || null
+  const region = document.getElementById('clubRegion').value || ''
   if(!name){ log('name required'); return }
+  const allowed = Array.from(document.getElementById('clubRegion').options).map(o=>o.value).filter(Boolean)
+  const finalRegion = region ? (allowed.includes(region) ? region : null) : null
+  if(region && !finalRegion){ log('請選擇列表中的國家代碼或留空'); return }
   try{
-    const d = await authedFetch('/api/admin/clubs', { method:'POST', body: JSON.stringify({ name, region }) })
+    const d = await authedFetch('/api/admin/clubs', { method:'POST', body: JSON.stringify({ name, region: finalRegion }) })
     log(d); loadClubs()
   }catch(e){}
 }
