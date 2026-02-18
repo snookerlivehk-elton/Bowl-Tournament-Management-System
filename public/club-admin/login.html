@@ -62,3 +62,11 @@ async function deleteTemplate(id){await authedFetch('/api/club/templates/'+id,{m
 if(location.hash.startsWith('#token=')){const t=location.hash.slice(7);document.getElementById('tokenInput').value=t;setTok(t);updateUI();loadProfile()}
 else if(new URLSearchParams(location.search).get('token')){const t=new URLSearchParams(location.search).get('token');document.getElementById('tokenInput').value=t;setTok(t);updateUI();loadProfile()}
 updateUI()
+window.useToken = useToken
+window.saveProfile = saveProfile
+window.uploadLogo = uploadLogo
+window.createTemplate = createTemplate
+window.enableTemplate = enableTemplate
+window.deleteTemplate = deleteTemplate
+if(tok()){try{loadTemplates()}catch(e){}}
+</script>
