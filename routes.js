@@ -518,6 +518,67 @@ router.post('/club/templates/:tplId/generate', clubAuth, async (req, res) => {
   res.status(201).json({ matchIds: ids })
 })
 router.post('/players', async (req, res) => {
+function rankSeeds(results) {
+  return [...results].sort((a, b) => {
+    const ta = Number(a.total || 0)
+    const tb = Number(b.total || 0)
+    if (tb !== ta) return tb - ta
+    // 簡化的 tie-break：以 playerId 作固定排序避免不確定性
+    return Number(a.playerId) - Number(b.playerId)
+  }).slice(0, 5).map(r => Number(r.playerId))
+}
+
+router.post('/club/templates/:tplId/seeds', clubAuth, async (req, res) => {
+  const clubId = req.clubId
+  const tplId = parseInt(req.params.tplId, 10)
+  const { results } = req.body || {}
+  if (!Array.isArray(results) || results.length < 5) return res.status(400).json({ error: 'results need at least 5 players' })
+  if (db.available()) {
+    try {
+      await ensureClubTemplates()
+      const r = await db.query('select id,club_id,name,mode,options from club_match_templates where id=$1 and club_id=$2', [tplId, clubId])
+      if (r.rowCount === 0) return res.status(404).json({ error: 'not found' })
+      const seeds = rankSeeds(results)
+      // 可選：把 seeds 寫回 options（方便後續檢視）
+      const t = r.rows[0]
+      const opts = Object.assign({}, t.options || {}, { bracket: Object.assign({}, (t.options||{}).bracket || {}, { seeds_list: seeds }) })
+      await db.query('update club_match_templates set options=$2 where id=$1', [tplId, opts])
+      return res.json({ seeds })
+    } catch (e) {
+      return res.status(500).json({ error: 'seeding failed' })
+    }
+  }
+  return res.json({ seeds: rankSeeds(results) })
+})
+
+router.post('/club/templates/:tplId/assign-seeds', clubAuth, async (req, res) => {
+  const clubId = req.clubId
+  const tplId = parseInt(req.params.tplId, 10)
+  const { matchIds, seeds } = req.body || {}
+  if (!Array.isArray(matchIds) || matchIds.length !== 4) return res.status(400).json({ error: 'matchIds length must be 4' })
+  if (!Array.isArray(seeds) || seeds.length !== 5) return res.status(400).json({ error: 'seeds length must be 5' })
+  const [s1, s2, s3, s4, s5] = seeds.map(Number) // s1=最高分
+  if (db.available()) {
+    try {
+      await ensureClubTemplates()
+      // 初始指派：Round1: 5 vs 4，其餘先放置單邊種子
+      await db.query('update matches set player_ids=$2 where id=$1 and club_id=$3', [matchIds[0], JSON.stringify([s5, s4]), clubId])
+      await db.query('update matches set player_ids=$2 where id=$1 and club_id=$3', [matchIds[1], JSON.stringify([s3]), clubId])
+      await db.query('update matches set player_ids=$2 where id=$1 and club_id=$3', [matchIds[2], JSON.stringify([s2]), clubId])
+      await db.query('update matches set player_ids=$2 where id=$1 and club_id=$3', [matchIds[3], JSON.stringify([s1]), clubId])
+      // 記錄到模板 options 以便 UI 顯示
+      const r = await db.query('select options from club_match_templates where id=$1 and club_id=$2', [tplId, clubId])
+      const opts = Object.assign({}, (r.rows[0] && r.rows[0].options) || {})
+      opts.bracket = Object.assign({}, opts.bracket || {}, { matchIds, seeds_list: seeds })
+      await db.query('update club_match_templates set options=$2 where id=$1', [tplId, opts])
+      return res.json({ assigned: true, matchIds })
+    } catch (e) {
+      return res.status(500).json({ error: 'assign failed' })
+    }
+  }
+  return res.json({ assigned: true, matchIds })
+})
+router.post('/players', async (req, res) => {
   const { name, nationality, photoUrl } = req.body || {}
   if (!name) return res.status(400).json({ error: 'name required' })
   if (db.available()) {
