@@ -1,6 +1,8 @@
 const express = require('express')
 const crypto = require('crypto')
 const jwt = require('jsonwebtoken')
+const fs = require('fs')
+const path = require('path')
 const db = require('./db')
 const router = express.Router()
 
@@ -210,6 +212,39 @@ router.delete('/admin/countries/:code', adminAuth, async (req, res) => {
   mem.countries.splice(idx, 1)
   res.status(204).end()
 })
+
+// Upload flag image (admin protected) - store under public/flags/<ISO3>.<ext>
+router.post(
+  '/admin/countries/:code/flag',
+  adminAuth,
+  express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: '1mb' }),
+  async (req, res) => {
+    try {
+      const code = (req.params.code || '').toUpperCase()
+      if (!code || code.length !== 3) return res.status(400).json({ error: 'invalid code' })
+      const mime = req.get('content-type') || ''
+      const exts = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' }
+      const ext = exts[mime]
+      if (!ext) return res.status(415).json({ error: 'unsupported media type' })
+      const dir = path.join(__dirname, 'public', 'flags')
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+      const filePath = path.join(dir, `${code}${ext}`)
+      fs.writeFileSync(filePath, req.body)
+      const url = `/flags/${code}${ext}`
+      if (db.available()) {
+        await ensureCountries()
+        await db.query('update countries set flag_url=$2 where code=$1', [code, url])
+      } else {
+        if (!mem.countries) mem.countries = []
+        const idx = mem.countries.findIndex(c => c.code === code)
+        if (idx >= 0) mem.countries[idx].flag_url = url
+      }
+      return res.status(201).json({ flag_url: url })
+    } catch (e) {
+      return res.status(500).json({ error: 'upload flag failed' })
+    }
+  }
+)
 
 router.post('/players', async (req, res) => {
   const { name, nationality, photoUrl } = req.body || {}

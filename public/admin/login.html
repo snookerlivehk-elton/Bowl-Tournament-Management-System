@@ -85,10 +85,15 @@ th,td{border:1px solid #ddd;padding:8px;text-align:left}
   <div style="margin-top:10px">
     <button onclick="createCountry()">新增國家代碼</button>
     <button onclick="loadCountries()">重新載入</button>
+    <button onclick="updateCountry()">更新（依代碼）</button>
+  </div>
+  <div style="margin-top:10px">
+    <input type="file" id="ctFlagFile" accept="image/png,image/jpeg,image/webp">
+    <button onclick="uploadFlag()">上傳旗幟（依代碼）</button>
   </div>
   <div style="margin-top:10px">
     <table>
-      <thead><tr><th>代碼</th><th>名稱</th><th>本地名稱</th><th>旗幟</th></tr></thead>
+      <thead><tr><th>代碼</th><th>名稱</th><th>本地名稱</th><th>旗幟</th><th>操作</th></tr></thead>
       <tbody id="ctTable"></tbody>
     </table>
   </div>
@@ -171,7 +176,9 @@ async function loadCountries(){
     for(const c of list){
       const tr = document.createElement('tr')
       const flag = c.flag_url ? `<img src="${c.flag_url}" alt="${c.code}" style="height:18px">` : ''
-      tr.innerHTML = `<td>${c.code}</td><td>${c.name}</td><td>${c.local_name||''}</td><td>${flag}</td>`
+      tr.innerHTML = `<td>${c.code}</td><td>${c.name}</td><td>${c.local_name||''}</td><td>${flag}</td>
+      <td><button onclick='pickCountry(${JSON.stringify({code:""}).replace("{\"code\":\"\"}",JSON.stringify({code:c.code}).replace(/"/g,'&quot;'))})'>選取</button>
+      <button onclick='deleteCountry("${c.code}")'>刪除</button></td>`
       tbody.appendChild(tr)
     }
     log({countries:list.length})
@@ -188,6 +195,38 @@ async function createCountry(){
     const d = await authedFetch('/api/admin/countries', { method:'POST', body: JSON.stringify({ code, name, localName, flagUrl }) })
     log(d); loadCountries(); loadClubs()
   }catch(e){}
+}
+function pickCountry(c){
+  document.getElementById('ctCode').value = c.code || ''
+}
+async function updateCountry(){
+  const code = document.getElementById('ctCode').value.trim().toUpperCase()
+  if(!code){ log('請先輸入或選取代碼'); return }
+  const name = document.getElementById('ctName').value.trim() || null
+  const localName = document.getElementById('ctLocalName').value.trim() || null
+  const flagUrl = document.getElementById('ctFlagUrl').value.trim() || null
+  try{
+    const d = await authedFetch('/api/admin/countries/'+code, { method:'PUT', body: JSON.stringify({ name, localName, flagUrl }) })
+    log(d); loadCountries(); loadClubs()
+  }catch(e){}
+}
+async function deleteCountry(code){
+  if(!confirm('確定刪除 '+code+' ?')) return
+  try{
+    await authedFetch('/api/admin/countries/'+code, { method:'DELETE' })
+    log('deleted '+code); loadCountries(); loadClubs()
+  }catch(e){}
+}
+async function uploadFlag(){
+  const code = document.getElementById('ctCode').value.trim().toUpperCase()
+  const f = document.getElementById('ctFlagFile').files[0]
+  if(!code){ log('請先輸入或選取代碼'); return }
+  if(!f){ log('請選取圖片'); return }
+  try{
+    const r = await fetch('/api/admin/countries/'+code+'/flag', { method:'POST', headers: { 'Authorization':'Bearer '+token(), 'Content-Type': f.type }, body: f })
+    const d = await r.json()
+    log(d); loadCountries()
+  }catch(e){ log('upload failed') }
 }
 updateUI()
 </script>
