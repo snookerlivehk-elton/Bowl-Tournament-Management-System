@@ -34,13 +34,27 @@ th,td{border:1px solid #ddd;padding:8px;text-align:left}
       <datalist id="regionOptions"></datalist>
     </div>
   </div>
+  <div class="row">
+    <div><label>城市（可空）</label><br><input id="clubCity"></div>
+    <div><label>地址（可空）</label><br><input id="clubAddress"></div>
+  </div>
+  <div class="row">
+    <div><label>聯絡人（可空）</label><br><input id="clubContactName"></div>
+    <div><label>電話（可空）</label><br><input id="clubContactPhone"></div>
+    <div><label>Email（可空）</label><br><input id="clubContactEmail"></div>
+  </div>
   <div style="margin-top:10px">
     <button onclick="createClub()">建立球會</button>
+    <button onclick="updateClub()">更新選取球會</button>
     <button onclick="loadClubs()">重新載入</button>
   </div>
   <div style="margin-top:10px">
+    <input type="file" id="clubLogoFile" accept="image/png,image/jpeg,image/webp">
+    <button onclick="uploadClubLogo()">上傳 Logo（依選取球會）</button>
+  </div>
+  <div style="margin-top:10px">
     <table>
-      <thead><tr><th>ID</th><th>名稱</th><th>地區</th><th>建立時間</th></tr></thead>
+      <thead><tr><th>ID</th><th>名稱</th><th>地區</th><th>Logo</th><th>建立時間</th><th>操作</th></tr></thead>
       <tbody id="clubTable"></tbody>
     </table>
   </div>
@@ -75,6 +89,7 @@ function log(x){document.getElementById('log').textContent=(typeof x==='string')
 function token(){return localStorage.getItem('admin_token')||''}
 function setToken(t){localStorage.setItem('admin_token', t)}
 let countriesCache = []
+let currentClubId = null
 function updateUI(){
   const t = token()
   document.getElementById('status').textContent = t ? '已登入' : '未登入'
@@ -108,7 +123,10 @@ async function loadClubs(){
     tbody.innerHTML = ''
     for(const c of list){
       const tr = document.createElement('tr')
-      tr.innerHTML = `<td>${c.id}</td><td>${c.name}</td><td>${c.region||''}</td><td>${c.created_at||''}</td>`
+      const logo = c.logo_url ? `<img src="${c.logo_url}" alt="${c.name}" style="height:18px">` : ''
+      const payload = encodeURIComponent(JSON.stringify(c))
+      tr.innerHTML = `<td>${c.id}</td><td>${c.name}</td><td>${c.region||''}</td><td>${logo}</td><td>${c.created_at||''}</td>
+      <td><button onclick="pickClub('${payload}')">選取</button></td>`
       tbody.appendChild(tr)
     }
     log({clubs:list.length})
@@ -150,6 +168,43 @@ async function createClub(){
     const d = await authedFetch('/api/admin/clubs', { method:'POST', body: JSON.stringify({ name, region: finalRegion }) })
     log(d); loadClubs()
   }catch(e){}
+}
+function pickClub(enc){
+  const c = JSON.parse(decodeURIComponent(enc))
+  currentClubId = c.id
+  document.getElementById('clubName').value = c.name || ''
+  document.getElementById('clubRegion').value = (c.region||'')
+  document.getElementById('clubCity').value = c.city || ''
+  document.getElementById('clubAddress').value = c.address || ''
+  document.getElementById('clubContactName').value = c.contact_name || ''
+  document.getElementById('clubContactPhone').value = c.contact_phone || ''
+  document.getElementById('clubContactEmail').value = c.contact_email || ''
+}
+async function updateClub(){
+  if(!currentClubId){ log('請先在列表選取球會'); return }
+  const body = {
+    name: document.getElementById('clubName').value.trim() || null,
+    region: (document.getElementById('clubRegion').value || '').toUpperCase() || null,
+    city: document.getElementById('clubCity').value.trim() || null,
+    address: document.getElementById('clubAddress').value.trim() || null,
+    contactName: document.getElementById('clubContactName').value.trim() || null,
+    contactPhone: document.getElementById('clubContactPhone').value.trim() || null,
+    contactEmail: document.getElementById('clubContactEmail').value.trim() || null
+  }
+  try{
+    const d = await authedFetch('/api/admin/clubs/'+currentClubId, { method:'PUT', body: JSON.stringify(body) })
+    log(d); loadClubs()
+  }catch(e){}
+}
+async function uploadClubLogo(){
+  if(!currentClubId){ log('請先在列表選取球會'); return }
+  const f = document.getElementById('clubLogoFile').files[0]
+  if(!f){ log('請選取圖片'); return }
+  try{
+    const r = await fetch('/api/admin/clubs/'+currentClubId+'/logo', { method:'POST', headers: { 'Authorization':'Bearer '+token(), 'Content-Type': f.type }, body: f })
+    const d = await r.json()
+    log(d); loadClubs()
+  }catch(e){ log('upload logo failed') }
 }
 async function loadCountries(){
   try{

@@ -16,6 +16,17 @@ const mem = {
   rolls: []
 }
 
+async function ensureClubColumns() {
+  if (db.available()) {
+    await db.query("alter table if exists clubs add column if not exists city text")
+    await db.query("alter table if exists clubs add column if not exists address text")
+    await db.query("alter table if exists clubs add column if not exists contact_name text")
+    await db.query("alter table if exists clubs add column if not exists contact_phone text")
+    await db.query("alter table if exists clubs add column if not exists contact_email text")
+    await db.query("alter table if exists clubs add column if not exists logo_url text")
+  }
+}
+
 async function ensureCountries() {
   if (db.available()) {
     await db.query(`create table if not exists countries (
@@ -89,8 +100,15 @@ router.post('/admin/roles', adminAuth, async (req, res) => {
 // ----- Clubs CRUD (admin protected) -----
 router.get('/admin/clubs', adminAuth, async (req, res) => {
   if (db.available()) {
-    const r = await db.query('select id,name,region,created_at from clubs order by id desc')
-    return res.json(r.rows)
+    try {
+      const r = await db.query('select id,name,region,city,address,contact_name,contact_phone,contact_email,logo_url,created_at from clubs order by id desc')
+      return res.json(r.rows)
+    } catch (e) {
+      if (e && e.code === '42703') {
+        try { await ensureClubColumns(); const r2 = await db.query('select id,name,region,city,address,contact_name,contact_phone,contact_email,logo_url,created_at from clubs order by id desc'); return res.json(r2.rows) } catch (e2) { return res.status(500).json({ error: 'clubs columns missing' }) }
+      }
+      return res.status(500).json({ error: 'list clubs failed' })
+    }
   }
   res.json(mem.clubs)
 })
@@ -110,15 +128,20 @@ router.post('/admin/clubs', adminAuth, async (req, res) => {
 
 router.put('/admin/clubs/:id', adminAuth, async (req, res) => {
   const id = parseInt(req.params.id, 10)
-  const { name, region } = req.body || {}
+  const { name, region, city, address, contactName, contactPhone, contactEmail, logoUrl } = req.body || {}
   if (db.available()) {
-    const r = await db.query('update clubs set name=coalesce($2,name), region=$3 where id=$1 returning id,name,region,created_at', [id, name || null, region || null])
-    if (r.rowCount === 0) return res.status(404).json({ error: 'not found' })
-    return res.json(r.rows[0])
+    try {
+      const r = await db.query('update clubs set name=coalesce($2,name), region=$3, city=$4, address=$5, contact_name=$6, contact_phone=$7, contact_email=$8, logo_url=coalesce($9,logo_url) where id=$1 returning id,name,region,city,address,contact_name,contact_phone,contact_email,logo_url,created_at', [id, name || null, region || null, city || null, address || null, contactName || null, contactPhone || null, contactEmail || null, logoUrl || null])
+      if (r.rowCount === 0) return res.status(404).json({ error: 'not found' })
+      return res.json(r.rows[0])
+    } catch (e) {
+      if (e && e.code === '42703') { try { await ensureClubColumns(); const r2 = await db.query('update clubs set name=coalesce($2,name), region=$3, city=$4, address=$5, contact_name=$6, contact_phone=$7, contact_email=$8, logo_url=coalesce($9,logo_url) where id=$1 returning id,name,region,city,address,contact_name,contact_phone,contact_email,logo_url,created_at', [id, name || null, region || null, city || null, address || null, contactName || null, contactPhone || null, contactEmail || null, logoUrl || null]); if (r2.rowCount === 0) return res.status(404).json({ error: 'not found' }); return res.json(r2.rows[0]) } catch (e2) { return res.status(500).json({ error: 'clubs columns missing' }) } }
+      return res.status(500).json({ error: 'update club failed' })
+    }
   }
   const idx = mem.clubs.findIndex(c => c.id === id)
   if (idx === -1) return res.status(404).json({ error: 'not found' })
-  mem.clubs[idx] = { ...mem.clubs[idx], ...(name ? { name } : {}), region: region || mem.clubs[idx].region }
+  mem.clubs[idx] = { ...mem.clubs[idx], ...(name ? { name } : {}), region: region || mem.clubs[idx].region, city: city || mem.clubs[idx].city, address: address || mem.clubs[idx].address, contact_name: contactName || mem.clubs[idx].contact_name, contact_phone: contactPhone || mem.clubs[idx].contact_phone, contact_email: contactEmail || mem.clubs[idx].contact_email, logo_url: logoUrl || mem.clubs[idx].logo_url }
   res.json(mem.clubs[idx])
 })
 
@@ -133,6 +156,30 @@ router.delete('/admin/clubs/:id', adminAuth, async (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'not found' })
   mem.clubs.splice(idx, 1)
   res.status(204).end()
+})
+
+router.post('/admin/clubs/:id/logo', adminAuth, express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: '1mb' }), async (req, res) => {
+  const id = parseInt(req.params.id, 10)
+  try {
+    const mime = req.get('content-type') || ''
+    const exts = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' }
+    const ext = exts[mime]
+    if (!ext) return res.status(415).json({ error: 'unsupported media type' })
+    const dir = path.join(__dirname, 'public', 'logos')
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    const filePath = path.join(dir, `${id}${ext}`)
+    fs.writeFileSync(filePath, req.body)
+    const url = `/logos/${id}${ext}`
+    if (db.available()) {
+      try { await ensureClubColumns(); await db.query('update clubs set logo_url=$2 where id=$1', [id, url]) } catch (e) { return res.status(500).json({ error: 'update logo failed' }) }
+    } else {
+      const idx = mem.clubs.findIndex(c => c.id === id)
+      if (idx >= 0) mem.clubs[idx].logo_url = url
+    }
+    return res.status(201).json({ logo_url: url })
+  } catch (e) {
+    return res.status(500).json({ error: 'upload logo failed' })
+  }
 })
 
 // ----- Countries CRUD (admin protected) -----

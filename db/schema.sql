@@ -26,6 +26,13 @@ create table if not exists clubs (
   created_at timestamptz default now()
 );
 
+alter table if exists clubs add column if not exists city text;
+alter table if exists clubs add column if not exists address text;
+alter table if exists clubs add column if not exists contact_name text;
+alter table if exists clubs add column if not exists contact_phone text;
+alter table if exists clubs add column if not exists contact_email text;
+alter table if exists clubs add column if not exists logo_url text;
+
 create table if not exists countries (
   code text primary key,
   name text not null,
