@@ -37,7 +37,7 @@ app.get('/', (req, res) => {
   res.json({
     name: 'Bowl Tournament Management System',
     version: pkg.version,
-    endpoints: ['/health', '/api/version', '/api/auth/login', '/api/clubs', '/api/matches', '/api/admin/titles', '/api/admin/roles', '/api/players', '/api/integrations/ocr/scoreboard', '/player/invite?name=Alex&nationality=HKG', '/join/:token']
+    endpoints: ['/health', '/api/version', '/api/auth/login', '/api/admin/login', '/api/clubs', '/api/matches', '/api/admin/titles', '/api/admin/roles', '/api/admin/clubs', '/api/players', '/api/integrations/ocr/scoreboard', '/player/invite?name=Alex&nationality=HKG', '/join/:token']
   })
 })
 

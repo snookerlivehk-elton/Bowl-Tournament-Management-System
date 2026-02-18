@@ -1,5 +1,6 @@
 const express = require('express')
 const crypto = require('crypto')
+const jwt = require('jsonwebtoken')
 const db = require('./db')
 const router = express.Router()
 
@@ -13,7 +14,30 @@ const mem = {
   rolls: []
 }
 
-router.get('/admin/titles', async (req, res) => {
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || ''
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''
+const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'change-me'
+
+function adminAuth(req, res, next) {
+  const h = req.get('authorization') || ''
+  const m = h.match(/^Bearer\s+(.+)$/i)
+  if (!m) return res.status(401).json({ error: 'unauthorized' })
+  try {
+    jwt.verify(m[1], ADMIN_JWT_SECRET)
+    return next()
+  } catch (e) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+}
+
+router.post('/admin/login', (req, res) => {
+  const { email, password } = req.body || {}
+  if (!email || !password) return res.status(400).json({ error: 'email and password required' })
+  if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'invalid credentials' })
+  const token = jwt.sign({ sub: email, role: 'admin' }, ADMIN_JWT_SECRET, { expiresIn: '12h' })
+  res.json({ token })
+})
+router.get('/admin/titles', adminAuth, async (req, res) => {
   if (db.available()) {
     const r = await db.query('select id,name,scope from titles order by id desc')
     return res.json(r.rows)
@@ -21,7 +45,7 @@ router.get('/admin/titles', async (req, res) => {
   res.json(mem.titles)
 })
 
-router.post('/admin/titles', async (req, res) => {
+router.post('/admin/titles', adminAuth, async (req, res) => {
   const { name, scope } = req.body || {}
   if (!name) return res.status(400).json({ error: 'name required' })
   if (db.available()) {
@@ -34,7 +58,7 @@ router.post('/admin/titles', async (req, res) => {
   res.status(201).json(item)
 })
 
-router.post('/admin/roles', async (req, res) => {
+router.post('/admin/roles', adminAuth, async (req, res) => {
   const { name, permissions, parentRoleId } = req.body || {}
   if (!name) return res.status(400).json({ error: 'name required' })
   if (db.available()) {
@@ -45,6 +69,55 @@ router.post('/admin/roles', async (req, res) => {
   const item = { id, name, parentRoleId: parentRoleId || null, permissions: permissions || [] }
   mem.roles.push(item)
   res.status(201).json(item)
+})
+
+// ----- Clubs CRUD (admin protected) -----
+router.get('/admin/clubs', adminAuth, async (req, res) => {
+  if (db.available()) {
+    const r = await db.query('select id,name,region,created_at from clubs order by id desc')
+    return res.json(r.rows)
+  }
+  res.json(mem.clubs)
+})
+
+router.post('/admin/clubs', adminAuth, async (req, res) => {
+  const { name, region } = req.body || {}
+  if (!name) return res.status(400).json({ error: 'name required' })
+  if (db.available()) {
+    const r = await db.query('insert into clubs(name,region) values($1,$2) returning id,name,region,created_at', [name, region || null])
+    return res.status(201).json(r.rows[0])
+  }
+  const id = mem.clubs.length + 1
+  const item = { id, name, region: region || null, created_at: new Date().toISOString() }
+  mem.clubs.push(item)
+  res.status(201).json(item)
+})
+
+router.put('/admin/clubs/:id', adminAuth, async (req, res) => {
+  const id = parseInt(req.params.id, 10)
+  const { name, region } = req.body || {}
+  if (db.available()) {
+    const r = await db.query('update clubs set name=coalesce($2,name), region=$3 where id=$1 returning id,name,region,created_at', [id, name || null, region || null])
+    if (r.rowCount === 0) return res.status(404).json({ error: 'not found' })
+    return res.json(r.rows[0])
+  }
+  const idx = mem.clubs.findIndex(c => c.id === id)
+  if (idx === -1) return res.status(404).json({ error: 'not found' })
+  mem.clubs[idx] = { ...mem.clubs[idx], ...(name ? { name } : {}), region: region || mem.clubs[idx].region }
+  res.json(mem.clubs[idx])
+})
+
+router.delete('/admin/clubs/:id', adminAuth, async (req, res) => {
+  const id = parseInt(req.params.id, 10)
+  if (db.available()) {
+    const r = await db.query('delete from clubs where id=$1', [id])
+    if (r.rowCount === 0) return res.status(404).json({ error: 'not found' })
+    return res.status(204).end()
+  }
+  const idx = mem.clubs.findIndex(c => c.id === id)
+  if (idx === -1) return res.status(404).json({ error: 'not found' })
+  mem.clubs.splice(idx, 1)
+  res.status(204).end()
 })
 
 router.post('/players', async (req, res) => {
@@ -102,47 +175,7 @@ router.get('/integrations/centers/:id/scores', (req, res) => {
   res.status(501).json({ error: 'Not Implemented' })
 })
 
-// ----- One-time patch endpoint: add frames.scores column -----
-router.post('/admin/patch/frames-scores', async (req, res) => {
-  const key = process.env.PATCH_KEY
-  const provided = req.get('x-patch-key') || req.query.key
-  if (!key || !provided || provided !== key) {
-    return res.status(403).json({ error: 'forbidden' })
-  }
-  if (!db.available()) {
-    return res.status(503).json({ error: 'db unavailable' })
-  }
-  try {
-    const check = await db.query("select 1 from information_schema.columns where table_name='frames' and column_name='scores'")
-    if (check.rowCount > 0) {
-      return res.status(200).json({ status: 'exists' })
-    }
-    await db.query('alter table if exists frames add column if not exists scores jsonb')
-    return res.status(201).json({ status: 'added' })
-  } catch (e) {
-    return res.status(500).json({ error: 'patch failed' })
-  }
-})
-
-// GET 版本（方便從瀏覽器觸發），同樣以 PATCH_KEY 保護
-router.get('/admin/patch/frames-scores', async (req, res) => {
-  const key = process.env.PATCH_KEY
-  const provided = req.get('x-patch-key') || req.query.key
-  if (!key || !provided || provided !== key) {
-    return res.status(403).json({ error: 'forbidden' })
-  }
-  if (!db.available()) {
-    return res.status(503).json({ error: 'db unavailable' })
-  }
-  try {
-    const check = await db.query("select 1 from information_schema.columns where table_name='frames' and column_name='scores'")
-    if (check.rowCount > 0) return res.status(200).json({ status: 'exists' })
-    await db.query('alter table if exists frames add column if not exists scores jsonb')
-    return res.status(201).json({ status: 'added' })
-  } catch (e) {
-    return res.status(500).json({ error: 'patch failed' })
-  }
-})
+// （已完成修補後）移除了一次性修補端點
 
 // ----- Player QR match flow -----
 async function ensureUser(name, nationality) {
@@ -168,7 +201,8 @@ router.get('/player/invite', async (req, res) => {
       "default-src 'self'",
       "img-src * data: blob:",
       "style-src 'self' 'unsafe-inline'",
-      "script-src 'self' 'unsafe-inline'"
+      "script-src 'self' 'unsafe-inline'",
+      "connect-src 'self'"
     ].join('; '))
     const u1 = await ensureUser(name, nationality)
     let matchId

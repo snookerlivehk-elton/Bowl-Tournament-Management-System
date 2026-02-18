@@ -19,6 +19,13 @@ create table if not exists titles (
   scope text not null default 'club'
 );
 
+create table if not exists clubs (
+  id serial primary key,
+  name text not null,
+  region text,
+  created_at timestamptz default now()
+);
+
 create table if not exists matches (
   id serial primary key,
   competition_id int,
