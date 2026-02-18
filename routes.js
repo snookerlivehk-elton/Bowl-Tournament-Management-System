@@ -456,6 +456,67 @@ router.delete('/club/templates/:tplId', clubAuth, async (req, res) => {
   return res.status(204).end()
 })
 
+router.get('/club/templates/:tplId/plan', clubAuth, async (req, res) => {
+  const clubId = req.clubId
+  const tplId = parseInt(req.params.tplId, 10)
+  if (db.available()) {
+    try {
+      await ensureClubTemplates()
+      const r = await db.query('select id,club_id,name,mode,participant_kind,team_size,frames_per_match,options from club_match_templates where id=$1 and club_id=$2', [tplId, clubId])
+      if (r.rowCount === 0) return res.status(404).json({ error: 'not found' })
+      const t = r.rows[0]
+      if (t.mode !== 'tournament' || !t.options || t.options.bracket?.type !== 'stepladder' || t.options.bracket?.seeds !== 5) {
+        return res.status(400).json({ error: 'template must be tournament stepladder-5' })
+      }
+      const prelim = { games: t.options.prelim?.games || 1, lanes: t.options.lanes || 1, participants_limit: t.options.participants_limit || 5 }
+      const frames = t.frames_per_match || 1
+      const bracket = [
+        { round: 1, label: '5 vs 4', frames },
+        { round: 2, label: '勝者 vs 3', frames },
+        { round: 3, label: '勝者 vs 2', frames },
+        { round: 4, label: '勝者 vs 1（決賽）', frames },
+      ]
+      return res.json({ template: { id: t.id, name: t.name }, prelim, bracket })
+    } catch (e) {
+      return res.status(500).json({ error: 'plan failed' })
+    }
+  }
+  // memory fallback
+  return res.json({ template: { id: tplId }, prelim: { games: 1, lanes: 1, participants_limit: 5 }, bracket: [{ round:1, label:'5 vs 4', frames:1 },{ round:2, label:'勝者 vs 3', frames:1 },{ round:3, label:'勝者 vs 2', frames:1 },{ round:4, label:'勝者 vs 1（決賽）', frames:1 }] })
+})
+
+router.post('/club/templates/:tplId/generate', clubAuth, async (req, res) => {
+  const clubId = req.clubId
+  const tplId = parseInt(req.params.tplId, 10)
+  if (db.available()) {
+    try {
+      await ensureClubTemplates()
+      const r = await db.query('select id,club_id,name,mode,participant_kind,team_size,frames_per_match,options from club_match_templates where id=$1 and club_id=$2', [tplId, clubId])
+      if (r.rowCount === 0) return res.status(404).json({ error: 'not found' })
+      const t = r.rows[0]
+      if (t.mode !== 'tournament' || !t.options || t.options.bracket?.type !== 'stepladder' || t.options.bracket?.seeds !== 5) {
+        return res.status(400).json({ error: 'template must be tournament stepladder-5' })
+      }
+      const frames = t.frames_per_match || 1
+      const ids = []
+      // 建立 4 場淘汰賽占位（player_ids 空陣列，待後續以初賽排名指派）
+      for (let i = 1; i <= 4; i++) {
+        const mr = await db.query('insert into matches(competition_id,club_id,player_ids,frames_per_match,status) values($1,$2,$3,$4,$5) returning id', [null, clubId, JSON.stringify([]), frames, 'scheduled'])
+        ids.push(mr.rows[0].id)
+      }
+      return res.status(201).json({ matchIds: ids })
+    } catch (e) {
+      return res.status(500).json({ error: 'generate failed' })
+    }
+  }
+  const ids = []
+  for (let i = 1; i <= 4; i++) {
+    const id = mem.matches.length + 1
+    mem.matches.push({ id, competitionId: null, clubId, playerIds: [], framesPerMatch: 1, status: 'scheduled' })
+    ids.push(id)
+  }
+  res.status(201).json({ matchIds: ids })
+})
 router.post('/players', async (req, res) => {
   const { name, nationality, photoUrl } = req.body || {}
   if (!name) return res.status(400).json({ error: 'name required' })

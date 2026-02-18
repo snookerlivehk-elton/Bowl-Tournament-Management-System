@@ -60,7 +60,22 @@ async function authedFetch(url,opts){const h=Object.assign({},(opts&&opts.header
 async function loadProfile(){const d=await authedFetch('/api/club/profile',{method:'GET'});document.getElementById('name').value=d.name||'';document.getElementById('region').value=d.region||'';document.getElementById('city').value=d.city||'';document.getElementById('address').value=d.address||'';document.getElementById('contactName').value=d.contact_name||'';document.getElementById('contactPhone').value=d.contact_phone||'';document.getElementById('contactEmail').value=d.contact_email||'';if(d.logo_url){document.getElementById('logoPreview').src=d.logo_url}}
 async function saveProfile(){const body={name:document.getElementById('name').value.trim()||null,region:(document.getElementById('region').value||'').toUpperCase()||null,city:document.getElementById('city').value.trim()||null,address:document.getElementById('address').value.trim()||null,contactName:document.getElementById('contactName').value.trim()||null,contactPhone:document.getElementById('contactPhone').value.trim()||null,contactEmail:document.getElementById('contactEmail').value.trim()||null};const d=await authedFetch('/api/club/profile',{method:'PUT',body:JSON.stringify(body)});log(d);loadProfile()}
 async function uploadLogo(){const f=document.getElementById('logoFile').files[0];if(!f){log('請選取圖片');return}const r=await fetch('/api/club/logo',{method:'POST',headers:{'Authorization':'Bearer '+tok(),'Content-Type':f.type},body:f});const d=await r.json();log(d);loadProfile()}
-async function loadTemplates(){const list=await authedFetch('/api/club/templates',{method:'GET'});const tbody=document.getElementById('tplTable');tbody.innerHTML='';for(const t of list){const tr=document.createElement('tr');tr.innerHTML=`<td>${t.id}</td><td>${t.name}</td><td>${t.mode}</td><td>${t.participant_kind}</td><td>${t.team_size||''}</td><td>${t.frames_per_match}</td><td>${t.enabled?'Y':'N'}</td><td><button onclick="enableTemplate(${t.id},${t.enabled?'false':'true'})">${t.enabled?'停用':'啟用'}</button> <button onclick="deleteTemplate(${t.id})">刪除</button></td>`;tbody.appendChild(tr)}log({templates:list.length})}
+async function loadTemplates(){
+  const list=await authedFetch('/api/club/templates',{method:'GET'})
+  const tbody=document.getElementById('tplTable')
+  tbody.innerHTML=''
+  for(const t of list){
+    const tr=document.createElement('tr')
+    tr.innerHTML=`<td>${t.id}</td><td>${t.name}</td><td>${t.mode}</td><td>${t.participant_kind}</td><td>${t.team_size||''}</td><td>${t.frames_per_match}</td><td>${t.enabled?'Y':'N'}</td><td>
+    <button onclick="enableTemplate(${t.id},${t.enabled?'false':'true'})">${t.enabled?'停用':'啟用'}</button>
+    <button onclick="deleteTemplate(${t.id})">刪除</button>
+    <button onclick="showPlan(${t.id})">查看計畫</button>
+    <button onclick="generateMatches(${t.id})">生成賽事骨架</button>
+    </td>`
+    tbody.appendChild(tr)
+  }
+  log({templates:list.length})
+}
 async function createTemplate(){
   const name = document.getElementById('tplName').value.trim()
   if(!name){ log('名稱必填'); return }
@@ -91,6 +106,14 @@ async function createTemplate(){
 }
 async function enableTemplate(id,enabled){const d=await authedFetch('/api/club/templates/'+id,{method:'PUT',body:JSON.stringify({enabled})});log(d);loadTemplates()}
 async function deleteTemplate(id){await authedFetch('/api/club/templates/'+id,{method:'DELETE'});log('deleted');loadTemplates()}
+async function showPlan(id){
+  const d=await authedFetch('/api/club/templates/'+id+'/plan',{method:'GET'})
+  log(d)
+}
+async function generateMatches(id){
+  const d=await authedFetch('/api/club/templates/'+id+'/generate',{method:'POST'})
+  log(d)
+}
 // 支援兩種帶入方式：#token=... 或 ?token=...
 if(location.hash.startsWith('#token=')){const t=location.hash.slice(7);document.getElementById('tokenInput').value=t;setTok(t);updateUI();loadProfile()}
 else if(new URLSearchParams(location.search).get('token')){const t=new URLSearchParams(location.search).get('token');document.getElementById('tokenInput').value=t;setTok(t);updateUI();loadProfile()}
