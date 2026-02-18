@@ -504,6 +504,11 @@ router.post('/club/templates/:tplId/generate', clubAuth, async (req, res) => {
         const mr = await db.query('insert into matches(competition_id,club_id,player_ids,frames_per_match,status) values($1,$2,$3,$4,$5) returning id', [null, clubId, JSON.stringify([]), frames, 'scheduled'])
         ids.push(mr.rows[0].id)
       }
+      // 將 matchIds 寫入模板 options 以便後續推進使用（覆蓋舊值）
+      const tr2 = await db.query('select options from club_match_templates where id=$1 and club_id=$2', [tplId, clubId])
+      const opts = Object.assign({}, (tr2.rows[0] && tr2.rows[0].options) || {})
+      opts.bracket = Object.assign({}, opts.bracket || {}, { matchIds: ids })
+      await db.query('update club_match_templates set options=$2 where id=$1', [tplId, opts])
       return res.status(201).json({ matchIds: ids })
     } catch (e) {
       return res.status(500).json({ error: 'generate failed' })
