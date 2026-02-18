@@ -14,6 +14,19 @@ const mem = {
   rolls: []
 }
 
+async function ensureCountries() {
+  if (db.available()) {
+    await db.query(`create table if not exists countries (
+      code text primary key,
+      name text not null,
+      local_name text,
+      flag_url text,
+      enabled boolean not null default true,
+      created_at timestamptz default now()
+    )`)
+  }
+}
+
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || ''
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''
 const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'change-me'
@@ -123,8 +136,15 @@ router.delete('/admin/clubs/:id', adminAuth, async (req, res) => {
 // ----- Countries CRUD (admin protected) -----
 router.get('/admin/countries', adminAuth, async (req, res) => {
   if (db.available()) {
-    const r = await db.query('select code,name,local_name,flag_url,enabled,created_at from countries where enabled=true order by name asc')
-    return res.json(r.rows)
+    try{
+      const r = await db.query('select code,name,local_name,flag_url,enabled,created_at from countries where enabled=true order by name asc')
+      return res.json(r.rows)
+    }catch(e){
+      if (e && e.code === '42P01') {
+        try{ await ensureCountries(); const r2 = await db.query('select code,name,local_name,flag_url,enabled,created_at from countries where enabled=true order by name asc'); return res.json(r2.rows) }catch(e2){ return res.status(500).json({ error: 'countries table missing' }) }
+      }
+      return res.status(500).json({ error: 'list countries failed' })
+    }
   }
   const list = (mem.countries || []).filter(c => c.enabled !== false).sort((a,b)=>String(a.name).localeCompare(String(b.name)))
   res.json(list)
@@ -138,6 +158,9 @@ router.post('/admin/countries', adminAuth, async (req, res) => {
       const r = await db.query('insert into countries(code,name,local_name,flag_url,enabled) values($1,$2,$3,$4,$5) returning code,name,local_name,flag_url,enabled,created_at', [code.trim().toUpperCase(), name.trim(), localName || null, flagUrl || null, enabled === false ? false : true])
       return res.status(201).json(r.rows[0])
     }catch(e){
+      if (e && e.code === '42P01') {
+        try { await ensureCountries(); const r2 = await db.query('insert into countries(code,name,local_name,flag_url,enabled) values($1,$2,$3,$4,$5) returning code,name,local_name,flag_url,enabled,created_at', [code.trim().toUpperCase(), name.trim(), localName || null, flagUrl || null, enabled === false ? false : true]); return res.status(201).json(r2.rows[0]) } catch (e2) { return res.status(500).json({ error: 'countries table missing' }) }
+      }
       return res.status(500).json({ error: 'create country failed' })
     }
   }
@@ -153,9 +176,14 @@ router.put('/admin/countries/:code', adminAuth, async (req, res) => {
   const code = (req.params.code || '').toUpperCase()
   const { name, localName, flagUrl, enabled } = req.body || {}
   if (db.available()) {
-    const r = await db.query('update countries set name=coalesce($2,name), local_name=$3, flag_url=$4, enabled=coalesce($5,enabled) where code=$1 returning code,name,local_name,flag_url,enabled,created_at', [code, name || null, localName || null, flagUrl || null, typeof enabled === 'boolean' ? enabled : null])
-    if (r.rowCount === 0) return res.status(404).json({ error: 'not found' })
-    return res.json(r.rows[0])
+    try{
+      const r = await db.query('update countries set name=coalesce($2,name), local_name=$3, flag_url=$4, enabled=coalesce($5,enabled) where code=$1 returning code,name,local_name,flag_url,enabled,created_at', [code, name || null, localName || null, flagUrl || null, typeof enabled === 'boolean' ? enabled : null])
+      if (r.rowCount === 0) return res.status(404).json({ error: 'not found' })
+      return res.json(r.rows[0])
+    }catch(e){
+      if (e && e.code === '42P01') { try { await ensureCountries(); const r2 = await db.query('update countries set name=coalesce($2,name), local_name=$3, flag_url=$4, enabled=coalesce($5,enabled) where code=$1 returning code,name,local_name,flag_url,enabled,created_at', [code, name || null, localName || null, flagUrl || null, typeof enabled === 'boolean' ? enabled : null]); if (r2.rowCount === 0) return res.status(404).json({ error: 'not found' }); return res.json(r2.rows[0]) } catch (e2) { return res.status(500).json({ error: 'countries table missing' }) } }
+      return res.status(500).json({ error: 'update country failed' })
+    }
   }
   if (!mem.countries) mem.countries = []
   const idx = mem.countries.findIndex(c => c.code === code)
@@ -167,9 +195,14 @@ router.put('/admin/countries/:code', adminAuth, async (req, res) => {
 router.delete('/admin/countries/:code', adminAuth, async (req, res) => {
   const code = (req.params.code || '').toUpperCase()
   if (db.available()) {
-    const r = await db.query('delete from countries where code=$1', [code])
-    if (r.rowCount === 0) return res.status(404).json({ error: 'not found' })
-    return res.status(204).end()
+    try{
+      const r = await db.query('delete from countries where code=$1', [code])
+      if (r.rowCount === 0) return res.status(404).json({ error: 'not found' })
+      return res.status(204).end()
+    }catch(e){
+      if (e && e.code === '42P01') { try { await ensureCountries(); const r2 = await db.query('delete from countries where code=$1', [code]); if (r2.rowCount === 0) return res.status(404).json({ error: 'not found' }); return res.status(204).end() } catch (e2) { return res.status(500).json({ error: 'countries table missing' }) } }
+      return res.status(500).json({ error: 'delete country failed' })
+    }
   }
   if (!mem.countries) mem.countries = []
   const idx = mem.countries.findIndex(c => c.code === code)
