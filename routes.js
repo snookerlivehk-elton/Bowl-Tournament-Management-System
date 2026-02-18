@@ -410,6 +410,16 @@ router.post('/club/templates', clubAuth, async (req, res) => {
   const id = req.clubId
   const { name, mode, participantKind, teamSize, framesPerMatch, options, enabled } = req.body || {}
   if (!name) return res.status(400).json({ error: 'name required' })
+  if (framesPerMatch && framesPerMatch < 1) return res.status(400).json({ error: 'framesPerMatch invalid' })
+  if (participantKind === 'team' && (!teamSize || teamSize < 2)) return res.status(400).json({ error: 'teamSize required for team' })
+  if (mode === 'tournament' && options) {
+    if (!options.lanes || options.lanes < 1) return res.status(400).json({ error: 'lanes invalid' })
+    if (!options.participants_limit || options.participants_limit < 5) return res.status(400).json({ error: 'participants_limit invalid' })
+    const prelimGames = options.prelim && options.prelim.games
+    if (!prelimGames || prelimGames < 1) return res.status(400).json({ error: 'prelim.games invalid' })
+    const bracket = options.bracket || {}
+    if (bracket.type !== 'stepladder' || bracket.seeds !== 5) return res.status(400).json({ error: 'bracket must be stepladder-5' })
+  }
   if (db.available()) {
     try { await ensureClubTemplates(); const r = await db.query('insert into club_match_templates(club_id,name,mode,participant_kind,team_size,frames_per_match,options,enabled) values($1,$2,$3,$4,$5,$6,$7,$8) returning id,club_id,name,mode,participant_kind,team_size,frames_per_match,options,enabled,created_at', [id, name, mode || 'friendly', participantKind || 'single', teamSize || null, framesPerMatch || 1, options || null, enabled === false ? false : true]); return res.status(201).json(r.rows[0]) } catch (e) { return res.status(500).json({ error: 'create template failed' }) }
   }
@@ -420,6 +430,17 @@ router.put('/club/templates/:tplId', clubAuth, async (req, res) => {
   const clubId = req.clubId
   const tplId = parseInt(req.params.tplId, 10)
   const { name, mode, participantKind, teamSize, framesPerMatch, options, enabled } = req.body || {}
+  if (framesPerMatch && framesPerMatch < 1) return res.status(400).json({ error: 'framesPerMatch invalid' })
+  if (participantKind === 'team' && teamSize !== undefined && teamSize !== null && teamSize < 2) return res.status(400).json({ error: 'teamSize invalid' })
+  if (mode === 'tournament' && options) {
+    if (options.lanes !== undefined && options.lanes < 1) return res.status(400).json({ error: 'lanes invalid' })
+    if (options.participants_limit !== undefined && options.participants_limit < 5) return res.status(400).json({ error: 'participants_limit invalid' })
+    if (options.prelim && options.prelim.games !== undefined && options.prelim.games < 1) return res.status(400).json({ error: 'prelim.games invalid' })
+    if (options.bracket) {
+      if (options.bracket.type && options.bracket.type !== 'stepladder') return res.status(400).json({ error: 'bracket.type must be stepladder' })
+      if (options.bracket.seeds && options.bracket.seeds !== 5) return res.status(400).json({ error: 'bracket.seeds must be 5' })
+    }
+  }
   if (db.available()) {
     try { await ensureClubTemplates(); const r = await db.query('update club_match_templates set name=coalesce($3,name), mode=coalesce($4,mode), participant_kind=coalesce($5,participant_kind), team_size=$6, frames_per_match=coalesce($7,frames_per_match), options=$8, enabled=coalesce($9,enabled) where id=$1 and club_id=$2 returning id,club_id,name,mode,participant_kind,team_size,frames_per_match,options,enabled,created_at', [tplId, clubId, name || null, mode || null, participantKind || null, teamSize || null, framesPerMatch || null, options || null, typeof enabled === 'boolean' ? enabled : null]); if (r.rowCount === 0) return res.status(404).json({ error: 'not found' }); return res.json(r.rows[0]) } catch (e) { return res.status(500).json({ error: 'update template failed' }) }
   }

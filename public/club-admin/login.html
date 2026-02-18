@@ -33,6 +33,12 @@
       <div><label>隊伍人數（team 時）</label><br><input id="tplTeamSize" type="number" min="2" placeholder="可空"></div>
       <div><label>每場局數</label><br><input id="tplFrames" type="number" min="1" value="1"></div>
     </div>
+    <div class="row">
+      <div><label>球道數</label><br><input id="tplLanes" type="number" min="1" value="4"></div>
+      <div><label>參賽上限</label><br><input id="tplLimit" type="number" min="5" value="16"></div>
+      <div><label>初賽局數</label><br><input id="tplPrelimGames" type="number" min="1" value="3"></div>
+      <div><label>階梯淘汰</label><br><input id="tplStepladder" type="checkbox" checked> Stepladder-5</div>
+    </div>
     <div><label>選項 JSON（可空）</label><br><textarea id="tplOptions" rows="4" style="width:100%" placeholder='{"scoring":"standard"}'></textarea></div>
     <div style="margin-top:8px"><button onclick="createTemplate()">新增模板</button></div>
   </div>
@@ -55,7 +61,34 @@ async function loadProfile(){const d=await authedFetch('/api/club/profile',{meth
 async function saveProfile(){const body={name:document.getElementById('name').value.trim()||null,region:(document.getElementById('region').value||'').toUpperCase()||null,city:document.getElementById('city').value.trim()||null,address:document.getElementById('address').value.trim()||null,contactName:document.getElementById('contactName').value.trim()||null,contactPhone:document.getElementById('contactPhone').value.trim()||null,contactEmail:document.getElementById('contactEmail').value.trim()||null};const d=await authedFetch('/api/club/profile',{method:'PUT',body:JSON.stringify(body)});log(d);loadProfile()}
 async function uploadLogo(){const f=document.getElementById('logoFile').files[0];if(!f){log('請選取圖片');return}const r=await fetch('/api/club/logo',{method:'POST',headers:{'Authorization':'Bearer '+tok(),'Content-Type':f.type},body:f});const d=await r.json();log(d);loadProfile()}
 async function loadTemplates(){const list=await authedFetch('/api/club/templates',{method:'GET'});const tbody=document.getElementById('tplTable');tbody.innerHTML='';for(const t of list){const tr=document.createElement('tr');tr.innerHTML=`<td>${t.id}</td><td>${t.name}</td><td>${t.mode}</td><td>${t.participant_kind}</td><td>${t.team_size||''}</td><td>${t.frames_per_match}</td><td>${t.enabled?'Y':'N'}</td><td><button onclick="enableTemplate(${t.id},${t.enabled?'false':'true'})">${t.enabled?'停用':'啟用'}</button> <button onclick="deleteTemplate(${t.id})">刪除</button></td>`;tbody.appendChild(tr)}log({templates:list.length})}
-async function createTemplate(){let opts=null;const txt=document.getElementById('tplOptions').value.trim();if(txt){try{opts=JSON.parse(txt)}catch(e){log('選項 JSON 格式錯誤');return}}const body={name:document.getElementById('tplName').value.trim(),mode:document.getElementById('tplMode').value,participantKind:document.getElementById('tplKind').value,teamSize:parseInt(document.getElementById('tplTeamSize').value||'0',10)||null,framesPerMatch:parseInt(document.getElementById('tplFrames').value||'1',10),options:opts};if(!body.name){log('名稱必填');return}const d=await authedFetch('/api/club/templates',{method:'POST',body:JSON.stringify(body)});log(d);loadTemplates()}
+async function createTemplate(){
+  const name = document.getElementById('tplName').value.trim()
+  if(!name){ log('名稱必填'); return }
+  const mode = document.getElementById('tplMode').value
+  const participantKind = document.getElementById('tplKind').value
+  const teamSize = parseInt(document.getElementById('tplTeamSize').value||'0',10)||null
+  const framesPerMatch = parseInt(document.getElementById('tplFrames').value||'1',10)
+  const lanes = parseInt(document.getElementById('tplLanes').value||'1',10)
+  const limit = parseInt(document.getElementById('tplLimit').value||'5',10)
+  const prelimGames = parseInt(document.getElementById('tplPrelimGames').value||'1',10)
+  const stepladder = document.getElementById('tplStepladder').checked
+  let opts = null
+  const txt = document.getElementById('tplOptions').value.trim()
+  if (stepladder) {
+    opts = {
+      lanes,
+      participants_limit: limit,
+      prelim: { games: prelimGames, scoring: 'standard', tie_breakers: ['last_game_higher'] },
+      bracket: { type: 'stepladder', seeds: 5 },
+      scheduling: { mode: 'manual', lane_policy: 'sequential' }
+    }
+  } else if (txt) {
+    try{ opts = JSON.parse(txt) } catch(e){ log('選項 JSON 格式錯誤'); return }
+  }
+  const body = { name, mode, participantKind, teamSize, framesPerMatch, options: opts }
+  const d = await authedFetch('/api/club/templates', { method:'POST', body: JSON.stringify(body) })
+  log(d); loadTemplates()
+}
 async function enableTemplate(id,enabled){const d=await authedFetch('/api/club/templates/'+id,{method:'PUT',body:JSON.stringify({enabled})});log(d);loadTemplates()}
 async function deleteTemplate(id){await authedFetch('/api/club/templates/'+id,{method:'DELETE'});log('deleted');loadTemplates()}
 // 支援兩種帶入方式：#token=... 或 ?token=...
