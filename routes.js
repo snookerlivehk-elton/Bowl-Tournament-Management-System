@@ -517,7 +517,6 @@ router.post('/club/templates/:tplId/generate', clubAuth, async (req, res) => {
   }
   res.status(201).json({ matchIds: ids })
 })
-router.post('/players', async (req, res) => {
 function rankSeeds(results) {
   return [...results].sort((a, b) => {
     const ta = Number(a.total || 0)
