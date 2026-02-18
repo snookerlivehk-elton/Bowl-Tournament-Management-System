@@ -30,37 +30,8 @@ th,td{border:1px solid #ddd;padding:8px;text-align:left}
     <div><label>球會名稱</label><br><input id="clubName"></div>
     <div>
       <label>地區（可空）</label><br>
-      <select id="clubRegion">
-        <option value="">（留空）</option>
-        <option value="HKG">HKG - Hong Kong</option>
-        <option value="CHN">CHN - China</option>
-        <option value="TWN">TWN - Taiwan</option>
-        <option value="JPN">JPN - Japan</option>
-        <option value="KOR">KOR - Korea</option>
-        <option value="SGP">SGP - Singapore</option>
-        <option value="MAC">MAC - Macau</option>
-        <option value="MYS">MYS - Malaysia</option>
-        <option value="THA">THA - Thailand</option>
-        <option value="VNM">VNM - Vietnam</option>
-        <option value="IND">IND - India</option>
-        <option value="AUS">AUS - Australia</option>
-        <option value="NZL">NZL - New Zealand</option>
-        <option value="USA">USA - United States</option>
-        <option value="CAN">CAN - Canada</option>
-        <option value="GBR">GBR - United Kingdom</option>
-        <option value="FRA">FRA - France</option>
-        <option value="DEU">DEU - Germany</option>
-        <option value="ITA">ITA - Italy</option>
-        <option value="ESP">ESP - Spain</option>
-        <option value="NLD">NLD - Netherlands</option>
-        <option value="SWE">SWE - Sweden</option>
-        <option value="NOR">NOR - Norway</option>
-        <option value="FIN">FIN - Finland</option>
-        <option value="RUS">RUS - Russia</option>
-        <option value="BRA">BRA - Brazil</option>
-        <option value="MEX">MEX - Mexico</option>
-        <option value="ZAF">ZAF - South Africa</option>
-      </select>
+      <input id="clubRegion" list="regionOptions" placeholder="輸入代碼（如 HKG）">
+      <datalist id="regionOptions"></datalist>
     </div>
   </div>
   <div style="margin-top:10px">
@@ -103,6 +74,7 @@ th,td{border:1px solid #ddd;padding:8px;text-align:left}
 function log(x){document.getElementById('log').textContent=(typeof x==='string')?x:JSON.stringify(x,null,2)}
 function token(){return localStorage.getItem('admin_token')||''}
 function setToken(t){localStorage.setItem('admin_token', t)}
+let countriesCache = []
 function updateUI(){
   const t = token()
   document.getElementById('status').textContent = t ? '已登入' : '未登入'
@@ -142,25 +114,26 @@ async function loadClubs(){
     log({clubs:list.length})
     // 同步更新地區下拉：優先使用 countries 清單
     try{
-      const countries = await authedFetch('/api/admin/countries', { method:'GET' })
-      const sel = document.getElementById('clubRegion')
-      const current = sel.value
-      sel.innerHTML = '<option value="">（留空）</option>'
-      for(const ct of countries){
+      countriesCache = await authedFetch('/api/admin/countries', { method:'GET' })
+      const dl = document.getElementById('regionOptions')
+      const input = document.getElementById('clubRegion')
+      const current = input.value
+      dl.innerHTML = ''
+      for(const ct of countriesCache){
         const opt = document.createElement('option')
         opt.value = ct.code
-        opt.textContent = `${ct.code} - ${ct.name}`
-        sel.appendChild(opt)
+        opt.label = `${ct.code} - ${ct.name}`
+        dl.appendChild(opt)
       }
-      if(current && countries.find(x=>x.code===current)) sel.value = current
+      if(current && countriesCache.find(x=>x.code===current.toUpperCase())) input.value = current.toUpperCase()
     }catch(e){}
   }catch(e){}
 }
 async function createClub(){
   const name = document.getElementById('clubName').value.trim()
-  const region = document.getElementById('clubRegion').value || ''
+  const region = (document.getElementById('clubRegion').value || '').toUpperCase()
   if(!name){ log('name required'); return }
-  const allowed = Array.from(document.getElementById('clubRegion').options).map(o=>o.value).filter(Boolean)
+  const allowed = (countriesCache||[]).map(c=>c.code)
   const finalRegion = region ? (allowed.includes(region) ? region : null) : null
   if(region && !finalRegion){ log('請選擇列表中的國家代碼或留空'); return }
   try{
