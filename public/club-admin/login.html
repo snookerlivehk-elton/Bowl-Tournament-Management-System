@@ -173,7 +173,23 @@
       <div style="margin-top:6px">
         <button onclick="saveParticipants()">儲存參賽名單</button>
         <button onclick="generateLeagueSchedule()">生成聯賽賽程</button>
+        <button onclick="loadSchedule()">查看賽程</button>
+        <button onclick="loadStandings()">查看積分榜</button>
       </div>
+    </div>
+    <div style="margin-top:10px">
+      <h5>賽程</h5>
+      <table>
+        <thead><tr><th>Round</th><th>Match</th><th>Lane</th><th>Slot</th><th>對陣</th><th>操作</th></tr></thead>
+        <tbody id="scheduleTable"></tbody>
+      </table>
+    </div>
+    <div style="margin-top:10px">
+      <h5>積分榜</h5>
+      <table>
+        <thead><tr><th>名次</th><th>Player</th><th>Points</th><th>Matches</th><th>Frames W-D-L</th><th>Pinfall</th></tr></thead>
+        <tbody id="standingsTable"></tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -400,7 +416,30 @@ async function saveParticipants(){
 async function generateLeagueSchedule(){
   const id=Number(document.getElementById('seedStageId').value||'0')
   const d=await authedFetch('/api/club/stages/'+id+'/schedule/round-robin',{method:'POST'})
-  log(d)
+  log(d); loadSchedule()
+}
+async function loadSchedule(){
+  const id=Number(document.getElementById('seedStageId').value||'0')
+  const list=await authedFetch('/api/club/stages/'+id+'/matches',{method:'GET'})
+  const tb=document.getElementById('scheduleTable'); tb.innerHTML=''
+  for(const m of list){
+    const lane=(m.slot_info&&m.slot_info.lane)||''
+    const slot=(m.slot_info&&m.slot_info.slot)!=null?m.slot_info.slot:''
+    const vs=(m.player_ids||[]).join(' vs ')
+    const tr=document.createElement('tr')
+    tr.innerHTML=`<td>${m.round_no||''}</td><td>#${m.match_id}</td><td>${lane}</td><td>${slot}</td><td>${vs}</td><td><a href="/api/m/${m.match_id}" target="_blank">打開</a></td>`
+    tb.appendChild(tr)
+  }
+}
+async function loadStandings(){
+  const id=Number(document.getElementById('seedStageId').value||'0')
+  const list=await authedFetch('/api/club/stages/'+id+'/standings',{method:'GET'})
+  const tb=document.getElementById('standingsTable'); tb.innerHTML=''
+  for(const s of list){
+    const tr=document.createElement('tr')
+    tr.innerHTML=`<td>${s.rank}</td><td>${s.playerId}</td><td>${s.points}</td><td>${s.matches}</td><td>${s.frames_w}-${s.frames_d}-${s.frames_l}</td><td>${s.pinfall}</td>`
+    tb.appendChild(tr)
+  }
 }
 // 支援兩種帶入方式：#token=... 或 ?token=...
 if(location.hash.startsWith('#token=')){const t=location.hash.slice(7);document.getElementById('tokenInput').value=t;setTok(t);updateUI();loadProfile()}

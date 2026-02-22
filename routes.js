@@ -810,6 +810,88 @@ router.post('/club/stages/:id/schedule/round-robin', clubAuth, async (req, res) 
   }
   res.status(201).json({ matchIds: [] })
 })
+
+router.get('/club/stages/:id/matches', clubAuth, async (req, res) => {
+  const stageId = parseInt(req.params.id, 10)
+  if (db.available()) {
+    try {
+      await ensureCompetitions()
+      const r = await db.query(`select sm.match_id, sm.round_no, sm.slot_info, m.player_ids, m.status, m.frames_per_match
+        from stage_matches sm join matches m on m.id = sm.match_id
+        where sm.stage_id=$1 order by sm.round_no asc, (sm.slot_info->>'slot')::int nulls first, sm.match_id asc`, [stageId])
+      return res.json(r.rows)
+    } catch (e) {
+      return res.status(500).json({ error: 'list stage matches failed' })
+    }
+  }
+  res.json([])
+})
+
+router.get('/club/stages/:id/standings', clubAuth, async (req, res) => {
+  const stageId = parseInt(req.params.id, 10)
+  if (db.available()) {
+    try {
+      await ensureCompetitions()
+      const sr = await db.query('select config from competition_stages where id=$1', [stageId])
+      if (sr.rowCount === 0) return res.status(404).json({ error: 'stage not found' })
+      const cfg = sr.rows[0].config || {}
+      const per = (cfg.scoring && cfg.scoring.per_game) || { win: 1, draw: 0.5, loss: 0 }
+      const matchBonus = (cfg.scoring && cfg.scoring.match_total_bonus) || { enabled: false, points: 1 }
+      const maxMatchPts = (cfg.scoring && cfg.scoring.max_match_points) || null
+      const mr = await db.query('select match_id from stage_matches where stage_id=$1', [stageId])
+      const matchIds = mr.rows.map(x => x.match_id)
+      if (matchIds.length === 0) return res.json([])
+      const fr = await db.query('select match_id, frame_no, scores from frames where match_id = any($1) order by match_id, frame_no', [matchIds])
+      // Also need player_ids for each match
+      const mrows = await db.query('select id, player_ids from matches where id = any($1)', [matchIds])
+      const playersByMatch = new Map(mrows.rows.map(x => [x.id, x.player_ids || []]))
+      const framesByMatch = new Map()
+      for (const row of fr.rows) {
+        if (!framesByMatch.has(row.match_id)) framesByMatch.set(row.match_id, [])
+        framesByMatch.get(row.match_id).push(row)
+      }
+      const agg = new Map()
+      function ensure(p){ if(!agg.has(p)) agg.set(p,{ playerId:p, points:0, games:0, frames_w:0, frames_d:0, frames_l:0, pinfall:0, matches:0 }) }
+      for (const mid of matchIds) {
+        const pids = playersByMatch.get(mid) || []
+        if (pids.length < 2) continue
+        const [p1, p2] = pids.map(Number)
+        ensure(p1); ensure(p2)
+        const frames = framesByMatch.get(mid) || []
+        let p1Total = 0, p2Total = 0
+        let pts1 = 0, pts2 = 0
+        for (const f of frames) {
+          const s = f.scores || {}
+          const a = Number((s && s.p1) || 0)
+          const b = Number((s && s.p2) || 0)
+          p1Total += a; p2Total += b
+          if (a > b) { pts1 += per.win; pts2 += per.loss; agg.get(p1).frames_w++; agg.get(p2).frames_l++ }
+          else if (a < b) { pts1 += per.loss; pts2 += per.win; agg.get(p1).frames_l++; agg.get(p2).frames_w++ }
+          else { pts1 += per.draw; pts2 += per.draw; agg.get(p1).frames_d++; agg.get(p2).frames_d++ }
+          agg.get(p1).games++; agg.get(p2).games++
+        }
+        if (matchBonus.enabled) {
+          if (p1Total > p2Total) pts1 += Number(matchBonus.points || 1)
+          else if (p2Total > p1Total) pts2 += Number(matchBonus.points || 1)
+        }
+        if (maxMatchPts != null) {
+          const maxp = Number(maxMatchPts)
+          pts1 = Math.min(pts1, maxp); pts2 = Math.min(pts2, maxp)
+        }
+        agg.get(p1).points += pts1; agg.get(p2).points += pts2
+        agg.get(p1).pinfall += p1Total; agg.get(p2).pinfall += p2Total
+        agg.get(p1).matches++; agg.get(p2).matches++
+      }
+      const list = Array.from(agg.values())
+      list.sort((a,b)=> b.points - a.points || b.pinfall - a.pinfall || b.frames_w - a.frames_w)
+      list.forEach((x,i)=> x.rank = i+1)
+      return res.json(list)
+    } catch (e) {
+      return res.status(500).json({ error: 'standings failed' })
+    }
+  }
+  res.json([])
+})
 router.post('/club/stages/:id/seeds', clubAuth, async (req, res) => {
   const stageId = parseInt(req.params.id, 10)
   const { results } = req.body || {}
