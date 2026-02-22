@@ -196,6 +196,14 @@
       </table>
     </div>
     <div style="margin-top:10px">
+      <h5>回合控制</h5>
+      <button onclick="loadRounds()">載入回合摘要</button>
+      <table style="margin-top:6px">
+        <thead><tr><th>Round</th><th>總場次</th><th>有記分</th><th>狀態</th><th>操作</th></tr></thead>
+        <tbody id="roundsTable"></tbody>
+      </table>
+    </div>
+    <div style="margin-top:10px">
       <h5>積分榜</h5>
       <table>
         <thead><tr><th>名次</th><th>Player</th><th>Points</th><th>Matches</th><th>Frames W-D-L</th><th>Pinfall</th></tr></thead>
@@ -471,6 +479,27 @@ async function loadStandings(){
     tr.innerHTML=`<td>${s.rank}</td><td>${s.playerId}</td><td>${s.points}</td><td>${s.matches}</td><td>${s.frames_w}-${s.frames_d}-${s.frames_l}</td><td>${s.pinfall}</td>`
     tb.appendChild(tr)
   }
+}
+async function loadRounds(){
+  const id=Number(document.getElementById('seedStageId').value||'0')
+  const data=await authedFetch('/api/club/stages/'+id+'/rounds',{method:'GET'})
+  const tb=document.getElementById('roundsTable'); tb.innerHTML=''
+  for(const r of (data.rounds||[])){
+    const tr=document.createElement('tr')
+    const ops = `<button onclick="openRound(${r.round})">開放</button> <button onclick="completeRound(${r.round})">完成</button>`
+    tr.innerHTML=`<td>${r.round}${r.current?' (current)':''}</td><td>${r.total}</td><td>${r.withFrames}</td><td>${r.status}</td><td>${ops}</td>`
+    tb.appendChild(tr)
+  }
+}
+async function openRound(r){
+  const id=Number(document.getElementById('seedStageId').value||'0')
+  const d=await authedFetch(`/api/club/stages/${id}/rounds/${r}/open`,{method:'POST'})
+  log(d); loadRounds()
+}
+async function completeRound(r){
+  const id=Number(document.getElementById('seedStageId').value||'0')
+  const d=await authedFetch(`/api/club/stages/${id}/rounds/${r}/complete`,{method:'POST'})
+  log(d); loadStandings(); loadRounds()
 }
 async function loadStats(){
   const id=Number(document.getElementById('seedStageId').value||'0')

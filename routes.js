@@ -978,6 +978,146 @@ router.get('/club/stages/:id/stats', clubAuth, async (req, res) => {
   }
   res.json([])
 })
+
+router.get('/club/stages/:id/rounds', clubAuth, async (req, res) => {
+  const stageId = parseInt(req.params.id, 10)
+  if (db.available()) {
+    try {
+      await ensureCompetitions()
+      const sr = await db.query('select config from competition_stages where id=$1', [stageId])
+      if (sr.rowCount === 0) return res.status(404).json({ error: 'stage not found' })
+      const cfg = sr.rows[0].config || {}
+      const mr = await db.query('select match_id, round_no from stage_matches where stage_id=$1', [stageId])
+      const matchIds = mr.rows.map(x => x.match_id)
+      let framesByMatch = new Map()
+      if (matchIds.length > 0) {
+        const fr = await db.query('select match_id, count(*) as c from frames where match_id = any($1) group by match_id', [matchIds])
+        framesByMatch = new Map(fr.rows.map(x => [x.match_id, Number(x.c)]))
+      }
+      const roundMap = new Map()
+      for (const r of mr.rows) {
+        const key = Number(r.round_no) || 1
+        if (!roundMap.has(key)) roundMap.set(key, { round: key, total: 0, withFrames: 0 })
+        const item = roundMap.get(key)
+        item.total++
+        if ((framesByMatch.get(r.match_id)||0) > 0) item.withFrames++
+      }
+      const rounds = Array.from(roundMap.values()).sort((a,b)=>a.round-b.round).map(x=>{
+        const state = (cfg.rounds_state && cfg.rounds_state[x.round]) || 'pending'
+        const current = (cfg.current_round || 1) === x.round
+        return Object.assign({}, x, { status: state, current })
+      })
+      return res.json({ currentRound: cfg.current_round || 1, rounds })
+    } catch (e) {
+      return res.status(500).json({ error: 'rounds failed' })
+    }
+  }
+  res.json({ currentRound: 1, rounds: [] })
+})
+
+router.post('/club/stages/:id/rounds/:round/open', clubAuth, async (req, res) => {
+  const stageId = parseInt(req.params.id, 10)
+  const roundNo = parseInt(req.params.round, 10)
+  if (db.available()) {
+    try {
+      await ensureCompetitions()
+      const sr = await db.query('select config from competition_stages where id=$1', [stageId])
+      if (sr.rowCount === 0) return res.status(404).json({ error: 'stage not found' })
+      const cfg = sr.rows[0].config || {}
+      const rs = Object.assign({}, cfg.rounds_state || {}, { [roundNo]: 'open' })
+      cfg.rounds_state = rs
+      cfg.current_round = roundNo
+      await db.query('update competition_stages set config=$2 where id=$1', [stageId, cfg])
+      return res.json({ ok: true, currentRound: roundNo })
+    } catch (e) { return res.status(500).json({ error: 'open round failed' }) }
+  }
+  res.json({ ok: true })
+})
+
+router.post('/club/stages/:id/rounds/:round/complete', clubAuth, async (req, res) => {
+  const stageId = parseInt(req.params.id, 10)
+  const roundNo = parseInt(req.params.round, 10)
+  if (db.available()) {
+    try {
+      await ensureCompetitions()
+      const sr = await db.query('select config from competition_stages where id=$1', [stageId])
+      if (sr.rowCount === 0) return res.status(404).json({ error: 'stage not found' })
+      const cfg = sr.rows[0].config || {}
+      const rs = Object.assign({}, cfg.rounds_state || {}, { [roundNo]: 'completed' })
+      cfg.rounds_state = rs
+      // 推進到下一回合（若存在）
+      const rinfo = await db.query('select max(round_no) as maxr from stage_matches where stage_id=$1', [stageId])
+      const maxr = Number(rinfo.rows[0].maxr || 1)
+      const next = (roundNo < maxr) ? (roundNo + 1) : null
+      if (next) {
+        cfg.current_round = next
+        cfg.rounds_state[next] = cfg.rounds_state[next] || 'open'
+      } else {
+        cfg.current_round = maxr
+      }
+      await db.query('update competition_stages set config=$2 where id=$1', [stageId, cfg])
+      // 返回最新 standings 與下一回合資訊
+      const standings = await (async () => {
+        const req2 = { params: { id: String(stageId) } }
+        const res2 = { json: x => x }
+        // 快速重用邏輯
+        return await (async () => {
+          const mr = await db.query('select match_id from stage_matches where stage_id=$1', [stageId])
+          const matchIds = mr.rows.map(x => x.match_id)
+          if (matchIds.length === 0) return []
+          const cfgr = sr.rows[0].config || {}
+          const per = (cfgr.scoring && cfgr.scoring.per_game) || { win: 1, draw: 0.5, loss: 0 }
+          const matchBonus = (cfgr.scoring && cfgr.scoring.match_total_bonus) || { enabled: false, points: 1 }
+          const maxMatchPts = (cfgr.scoring && cfgr.scoring.max_match_points) || null
+          const fr = await db.query('select match_id, frame_no, scores from frames where match_id = any($1) order by match_id, frame_no', [matchIds])
+          const mrows = await db.query('select id, player_ids from matches where id = any($1)', [matchIds])
+          const playersByMatch = new Map(mrows.rows.map(x => [x.id, x.player_ids || []]))
+          const framesByMatch = new Map()
+          for (const row of fr.rows) {
+            if (!framesByMatch.has(row.match_id)) framesByMatch.set(row.match_id, [])
+            framesByMatch.get(row.match_id).push(row)
+          }
+          const agg = new Map()
+          function ensure(p){ if(!agg.has(p)) agg.set(p,{ playerId:p, points:0, games:0, frames_w:0, frames_d:0, frames_l:0, pinfall:0, matches:0 }) }
+          for (const mid of matchIds) {
+            const pids = playersByMatch.get(mid) || []
+            if (pids.length < 2) continue
+            const [p1, p2] = pids.map(Number)
+            ensure(p1); ensure(p2)
+            const frames = framesByMatch.get(mid) || []
+            let p1Total = 0, p2Total = 0, pts1 = 0, pts2 = 0
+            for (const f of frames) {
+              const s = f.scores || {}
+              const a = Number((s && s.p1) || 0), b = Number((s && s.p2) || 0)
+              p1Total += a; p2Total += b
+              if (a > b) { pts1 += per.win; pts2 += per.loss; agg.get(p1).frames_w++; agg.get(p2).frames_l++ }
+              else if (a < b) { pts1 += per.loss; pts2 += per.win; agg.get(p1).frames_l++; agg.get(p2).frames_w++ }
+              else { pts1 += per.draw; pts2 += per.draw; agg.get(p1).frames_d++; agg.get(p2).frames_d++ }
+              agg.get(p1).games++; agg.get(p2).games++
+            }
+            if (matchBonus.enabled) {
+              if (p1Total > p2Total) pts1 += Number(matchBonus.points || 1)
+              else if (p2Total > p1Total) pts2 += Number(matchBonus.points || 1)
+            }
+            if (maxMatchPts != null) {
+              const maxp = Number(maxMatchPts)
+              pts1 = Math.min(pts1, maxp); pts2 = Math.min(pts2, maxp)
+            }
+            agg.get(p1).points += pts1; agg.get(p2).points += pts2
+            agg.get(p1).pinfall += p1Total; agg.get(p2).pinfall += p2Total
+            agg.get(p1).matches++; agg.get(p2).matches++
+          }
+          const list = Array.from(agg.values())
+          list.sort((a,b)=> b.points - a.points || b.pinfall - a.pinfall || b.frames_w - a.frames_w)
+          list.forEach((x,i)=> x.rank = i+1)
+          return list
+        })()
+      })()
+      return res.json({ ok: true, completedRound: roundNo, nextRound: next, standings })
+    } catch (e) { return res.status(500).json({ error: 'complete round failed' }) }
+  }
+  res.json({ ok: true })
+})
 router.post('/club/stages/:id/seeds', clubAuth, async (req, res) => {
   const stageId = parseInt(req.params.id, 10)
   const { results } = req.body || {}
