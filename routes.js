@@ -739,6 +739,27 @@ router.post('/club/stages/:id/participants', clubAuth, async (req, res) => {
   res.status(201).json({ saved: playerIds.length })
 })
 
+router.post('/club/stages/:id/participants/mock', clubAuth, async (req, res) => {
+  const stageId = parseInt(req.params.id, 10)
+  const { count, base } = req.body || {}
+  const n = Math.max(2, Number(count || 4))
+  const start = Number(base || 1001)
+  const ids = Array.from({ length: n }, (_, i) => start + i)
+  if (db.available()) {
+    try {
+      await ensureCompetitions()
+      await db.query('delete from stage_participants where stage_id=$1', [stageId])
+      for (const pid of ids) {
+        await db.query('insert into stage_participants(stage_id,player_id) values($1,$2)', [stageId, pid])
+      }
+      return res.status(201).json({ playerIds: ids })
+    } catch (e) {
+      return res.status(500).json({ error: 'mock participants failed' })
+    }
+  }
+  res.status(201).json({ playerIds: ids })
+})
+
 function roundRobinPairs(ids) {
   const list = [...ids]
   const hasBye = list.length % 2 === 1

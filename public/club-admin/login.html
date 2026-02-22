@@ -176,6 +176,14 @@
         <button onclick="loadSchedule()">查看賽程</button>
         <button onclick="loadStandings()">查看積分榜</button>
       </div>
+      <div style="margin-top:6px">
+        <label>沒有 playerId？快速產生測試名單</label>
+        <div class="row">
+          <div><label>人數</label><br><input id="lgMockCount" type="number" min="2" value="4"></div>
+          <div><label>起始ID</label><br><input id="lgMockBase" type="number" value="1001"></div>
+          <div style="align-self:end"><button onclick="mockParticipants()">生成測試名單</button></div>
+        </div>
+      </div>
     </div>
     <div style="margin-top:10px">
       <h5>賽程</h5>
@@ -417,6 +425,13 @@ async function generateLeagueSchedule(){
   const id=Number(document.getElementById('seedStageId').value||'0')
   const d=await authedFetch('/api/club/stages/'+id+'/schedule/round-robin',{method:'POST'})
   log(d); loadSchedule()
+}
+async function mockParticipants(){
+  const id=Number(document.getElementById('seedStageId').value||'0')
+  const count=Number(document.getElementById('lgMockCount').value||'4')
+  const base=Number(document.getElementById('lgMockBase').value||'1001')
+  const d=await authedFetch('/api/club/stages/'+id+'/participants/mock',{method:'POST',body:JSON.stringify({count,base})})
+  log(d); document.getElementById('lgPlayers').value=(d.playerIds||[]).join('\\n')
 }
 async function loadSchedule(){
   const id=Number(document.getElementById('seedStageId').value||'0')
