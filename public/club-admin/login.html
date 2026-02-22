@@ -83,7 +83,7 @@
   <!-- 舊版模板與種子工具已移至賽事/階段下方的「階梯種子工具」，這裡保留隱藏開關 -->
 </div>
 <div style="margin:8px 0">
-  <button onclick="document.getElementById('templates').style.display = (document.getElementById('templates').style.display==='none'?'block':'none')">顯示/隱藏舊版模板工具</button>
+  <button onclick="toggleTemplates()">顯示/隱藏舊版模板工具</button>
   <span style="font-size:12px;opacity:.7">（建議改用「賽事與階段」）</span>
 </div>
 <div class="card" id="competitions" style="display:none">
@@ -169,7 +169,7 @@
 function log(x){document.getElementById('log').textContent=(typeof x==='string')?x:JSON.stringify(x,null,2)}
 function tok(){return localStorage.getItem('club_token')||''}
 function setTok(t){localStorage.setItem('club_token',t)}
-function updateUI(){const t=tok();document.getElementById('status').textContent=t?'已登入':'未登入';document.getElementById('profile').style.display=t?'block':'none';document.getElementById('logo').style.display=t?'block':'none';document.getElementById('templates').style.display=t?'block':'none';document.getElementById('competitions').style.display=t?'block':'none'}
+function updateUI(){const t=tok();document.getElementById('status').textContent=t?'已登入':'未登入';document.getElementById('profile').style.display=t?'block':'none';document.getElementById('logo').style.display=t?'block':'none';document.getElementById('competitions').style.display=t?'block':'none'}
 function useToken(){const t=document.getElementById('tokenInput').value.trim();if(!t){log('請貼上 token');return}setTok(t);updateUI();loadProfile()}
 async function authedFetch(url,opts){const h=Object.assign({},(opts&&opts.headers)||{}, {'Authorization':'Bearer '+tok(),'Content-Type':'application/json'});const r=await fetch(url,Object.assign({},opts||{}, {headers:h}));if(!r.ok){const txt=await r.text();try{log(JSON.parse(txt))}catch{log(txt)};throw new Error('request failed')}return r.json()}
 async function loadProfile(){const d=await authedFetch('/api/club/profile',{method:'GET'});document.getElementById('name').value=d.name||'';document.getElementById('region').value=d.region||'';document.getElementById('city').value=d.city||'';document.getElementById('address').value=d.address||'';document.getElementById('contactName').value=d.contact_name||'';document.getElementById('contactPhone').value=d.contact_phone||'';document.getElementById('contactEmail').value=d.contact_email||'';if(d.logo_url){document.getElementById('logoPreview').src=d.logo_url}}
@@ -360,4 +360,12 @@ function toggleGuide(){
 if(localStorage.getItem('club_guide_hide')==='1'){
   const g=document.getElementById('guide'); g.setAttribute('data-hide','1'); g.style.display='none'
 }
+function toggleTemplates(){
+  const el=document.getElementById('templates')
+  const show = el.style.display==='none'
+  el.style.display = show ? 'block' : 'none'
+  if(show){ localStorage.setItem('club_templates_show','1') } else { localStorage.removeItem('club_templates_show') }
+}
+// 初始隱藏舊版模板，除非使用者手動打開過
+document.getElementById('templates').style.display = localStorage.getItem('club_templates_show')==='1' ? 'block' : 'none'
 </script>
