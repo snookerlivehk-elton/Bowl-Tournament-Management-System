@@ -1540,7 +1540,7 @@ button{cursor:pointer}
 <div class="card" id="summary">載入中…</div>
 <div class="card">
   <div class="row">
-    <div><label>第幾局</label><input id="frameNo" value="1" type="number" min="1"></div>
+    <div><label>第幾局 <span id="frameCap" style="font-size:12px;opacity:.7"></span></label><input id="frameNo" value="1" type="number" min="1"></div>
     <div><label id="p1Label">P1 分數</label><input id="p1Score" type="number" min="0" value="0"></div>
     <div><label id="p2Label">P2 分數</label><input id="p2Score" type="number" min="0" value="0"></div>
   </div>
@@ -1561,15 +1561,19 @@ async function refresh(){
   const d=await r.json()
   const s=document.getElementById('summary')
   const names=(d.playerIds||[]).join(' vs ')
-  s.innerHTML='<b>Players</b>: '+names+'<br><b>局數</b>: '+(d.framesPerMatch||4)+'<br><b>已入分</b>:'+ (d.frames||[]).map(f=>'#'+f.frame_no+': '+JSON.stringify(f.scores||{})).join(' , ')
+  s.innerHTML='<b>Players</b>: '+names+'<br><b>局數上限</b>: '+(d.framesPerMatch||4)+'<br><b>已入分</b>:'+ (d.frames||[]).map(f=>'#'+f.frame_no+': '+JSON.stringify(f.scores||{})).join(' , ')
   if(d.playerIds&&d.playerIds.length>=2){
     document.getElementById('p1Label').textContent='P1(' + d.playerIds[0] + ') 分數'
     document.getElementById('p2Label').textContent='P2(' + d.playerIds[1] + ') 分數'
   }
   window._players = d.playerIds || []
+  window._maxFrames = Number(d.framesPerMatch||4)
+  const fn=document.getElementById('frameNo'); fn.max = String(window._maxFrames)
+  document.getElementById('frameCap').textContent='(上限 '+window._maxFrames+')'
 }
 async function submitFrame(){
   const frameNo=Number(document.getElementById('frameNo').value)
+  if(window._maxFrames && frameNo>window._maxFrames){ alert('已超過局數上限 '+window._maxFrames); return }
   const p1=Number(document.getElementById('p1Score').value||0)
   const p2=Number(document.getElementById('p2Score').value||0)
   const d=await fetch('/api/matches/'+id+'/scores',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({frameNo,scores:{p1:p1,p2:p2}})})
