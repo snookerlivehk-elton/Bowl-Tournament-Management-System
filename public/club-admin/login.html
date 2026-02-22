@@ -14,7 +14,7 @@
       <ul>
         <li>在「賽事與階段」卡片輸入賽事名稱 → 建立賽事 → 在表格按「選取」。</li>
         <li>新增階段：選擇「賽制」後，底下會顯示對應設定表單。</li>
-        <li>stepladder：設定 Seeds（人數）、每場局數、球道數、球道輪換；可選 single/double/team 與隊伍人數。</li>
+        <li>stepladder：設定 Seeds（人數，取前 N 名依名次排入；例：5 人 → 首場 5 vs 4，勝者對 3 → 對 2 → 對 1）、每場局數、球道數、球道輪換；可選 single/double/team 與隊伍人數。</li>
         <li>league：設定（單/雙）循環、球道輪換、對賽配對（循環/按上週排名）、每局勝/和/負積分、整場總分加成與上限、讓分（是否啟用與每局值）、參賽型態。</li>
         <li>按「新增階段」後，在階段列表按「生成骨架」。stepladder 會建立占位場次；league 會標記為 planned（之後帶名單排程）。</li>
       </ul>
@@ -111,7 +111,7 @@
       <div><label>隊伍人數（team）</label><br><input id="stageTeamSize" type="number" min="2" value="3"></div>
     </div>
     <div id="cfg-stepladder" class="row" style="margin-top:8px">
-      <div><label>Seeds（人數）</label><br><input id="stageSeeds" type="number" min="3" value="5"></div>
+      <div><label title="階梯淘汰取前 N 名依名次排入，需 N≥3">Seeds（人數）</label><br><input id="stageSeeds" type="number" min="3" value="5"><div style="font-size:12px;opacity:.75;margin-top:4px">取前 N 名；例：5 人 → 首場 5 vs 4，勝者對 3 → 對 2 → 對 1</div></div>
       <div><label>球道輪換</label><br><select id="stageLanePolicy"><option value="sequential">sequential</option><option value="snake">snake</option><option value="rotate_by_pair">rotate_by_pair</option></select></div>
     </div>
     <div id="cfg-league" style="display:none;margin-top:8px">
