@@ -617,7 +617,6 @@ router.post('/club/templates/:tplId/assign-seeds', clubAuth, async (req, res) =>
   }
   return res.json({ assigned: true, matchIds })
 })
-router.post('/players', async (req, res) => {
 router.post('/club/competitions', clubAuth, async (req, res) => {
   const clubId = req.clubId
   const { name } = req.body || {}
