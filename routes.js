@@ -711,6 +711,56 @@ router.post('/club/stages/:id/generate', clubAuth, async (req, res) => {
   }
   res.status(201).json({ matchIds: [] })
 })
+
+router.post('/club/stages/:id/seeds', clubAuth, async (req, res) => {
+  const stageId = parseInt(req.params.id, 10)
+  const { results } = req.body || {}
+  if (!Array.isArray(results) || results.length < 5) return res.status(400).json({ error: 'results need at least 5 players' })
+  if (db.available()) {
+    try {
+      await ensureCompetitions()
+      const r = await db.query('select config from competition_stages where id=$1', [stageId])
+      if (r.rowCount === 0) return res.status(404).json({ error: 'stage not found' })
+      const cfg = r.rows[0].config || {}
+      const seeds = rankSeeds(results)
+      const bracket = Object.assign({}, cfg.bracket || {}, { seeds_list: seeds })
+      cfg.bracket = bracket
+      await db.query('update competition_stages set config=$2 where id=$1', [stageId, cfg])
+      return res.json({ seeds })
+    } catch (e) {
+      return res.status(500).json({ error: 'stage seeding failed' })
+    }
+  }
+  res.json({ seeds: rankSeeds(results) })
+})
+
+router.post('/club/stages/:id/assign-seeds', clubAuth, async (req, res) => {
+  const clubId = req.clubId
+  const stageId = parseInt(req.params.id, 10)
+  const { seeds } = req.body || {}
+  if (!Array.isArray(seeds) || seeds.length !== 5) return res.status(400).json({ error: 'seeds length must be 5' })
+  const [s1, s2, s3, s4, s5] = seeds.map(Number)
+  if (db.available()) {
+    try {
+      await ensureCompetitions()
+      const r = await db.query('select config from competition_stages where id=$1', [stageId])
+      if (r.rowCount === 0) return res.status(404).json({ error: 'stage not found' })
+      const cfg = r.rows[0].config || {}
+      const matchIds = (cfg.bracket && cfg.bracket.matchIds) || cfg.generated_match_ids || []
+      if (!Array.isArray(matchIds) || matchIds.length < 4) return res.status(400).json({ error: 'stage lacks matchIds' })
+      await db.query('update matches set player_ids=$2 where id=$1 and club_id=$3', [matchIds[0], JSON.stringify([s5, s4]), clubId])
+      await db.query('update matches set player_ids=$2 where id=$1 and club_id=$3', [matchIds[1], JSON.stringify([s3]), clubId])
+      await db.query('update matches set player_ids=$2 where id=$1 and club_id=$3', [matchIds[2], JSON.stringify([s2]), clubId])
+      await db.query('update matches set player_ids=$2 where id=$1 and club_id=$3', [matchIds[3], JSON.stringify([s1]), clubId])
+      cfg.bracket = Object.assign({}, cfg.bracket || {}, { matchIds, seeds_list: seeds })
+      await db.query('update competition_stages set config=$2 where id=$1', [stageId, cfg])
+      return res.json({ assigned: true, matchIds })
+    } catch (e) {
+      return res.status(500).json({ error: 'stage assign failed' })
+    }
+  }
+  res.json({ assigned: true })
+})
 router.post('/players', async (req, res) => {
   const { name, nationality, photoUrl } = req.body || {}
   if (!name) return res.status(400).json({ error: 'name required' })
@@ -970,24 +1020,48 @@ router.post('/matches/:id/scores', async (req, res) => {
 
 router.post('/matches/:id/winner', async (req, res) => {
   const id = parseInt(req.params.id, 10)
-  const { tplId, winnerPlayerId, loserPlayerId } = req.body || {}
-  if (!tplId || !winnerPlayerId) return res.status(400).json({ error: 'tplId and winnerPlayerId required' })
+  const { tplId, stageId, winnerPlayerId, loserPlayerId } = req.body || {}
+  if (!winnerPlayerId) return res.status(400).json({ error: 'winnerPlayerId required' })
   if (db.available()) {
     try {
       const mr = await db.query('select club_id, player_ids from matches where id=$1', [id])
       if (mr.rowCount === 0) return res.status(404).json({ error: 'match not found' })
       const clubId = mr.rows[0].club_id
-      const tr = await db.query('select options from club_match_templates where id=$1 and club_id=$2', [tplId, clubId])
-      if (tr.rowCount === 0) return res.status(404).json({ error: 'template not found' })
-      const opts = tr.rows[0].options || {}
-      const mIds = (opts.bracket && opts.bracket.matchIds) || []
+      let mIds = []
+      let bracket = {}
+      let save = null
+      if (tplId) {
+        const tr = await db.query('select options from club_match_templates where id=$1 and club_id=$2', [tplId, clubId])
+        if (tr.rowCount === 0) return res.status(404).json({ error: 'template not found' })
+        const opts = tr.rows[0].options || {}
+        mIds = (opts.bracket && opts.bracket.matchIds) || []
+        bracket = opts.bracket || {}
+        save = async () => {
+          const tr2 = await db.query('select options from club_match_templates where id=$1 and club_id=$2', [tplId, clubId])
+          const opts2 = tr2.rows[0].options || {}
+          opts2.bracket = Object.assign({}, opts2.bracket || {}, bracket)
+          await db.query('update club_match_templates set options=$2 where id=$1', [tplId, opts2])
+        }
+      } else if (stageId) {
+        const sr = await db.query('select config from competition_stages where id=$1', [stageId])
+        if (sr.rowCount === 0) return res.status(404).json({ error: 'stage not found' })
+        const cfg = sr.rows[0].config || {}
+        mIds = (cfg.bracket && cfg.bracket.matchIds) || cfg.generated_match_ids || []
+        bracket = cfg.bracket || {}
+        save = async () => {
+          const sr2 = await db.query('select config from competition_stages where id=$1', [stageId])
+          const cfg2 = sr2.rows[0].config || {}
+          cfg2.bracket = Object.assign({}, cfg2.bracket || {}, bracket)
+          await db.query('update competition_stages set config=$2 where id=$1', [stageId, cfg2])
+        }
+      } else {
+        return res.status(400).json({ error: 'tplId or stageId required' })
+      }
       const idx = mIds.indexOf(id)
       if (idx === -1) return res.status(400).json({ error: 'match not in template bracket' })
-      // 記錄勝者
-      const winners = Array.isArray(opts.bracket?.winners_by_round) ? opts.bracket.winners_by_round : []
+      const winners = Array.isArray(bracket?.winners_by_round) ? bracket.winners_by_round : []
       winners[idx] = Number(winnerPlayerId)
-      opts.bracket = Object.assign({}, opts.bracket || {}, { winners_by_round: winners })
-      // 推進到下一場
+      bracket = Object.assign({}, bracket, { winners_by_round: winners })
       let nextAssigned = null
       if (idx === 0 && mIds[1]) {
         const next = await db.query('select player_ids from matches where id=$1', [mIds[1]])
@@ -996,7 +1070,7 @@ router.post('/matches/:id/winner', async (req, res) => {
         await db.query('update matches set player_ids=$1 where id=$2', [JSON.stringify(merged), mIds[1]])
         nextAssigned = { matchId: mIds[1], playerIds: merged }
       } else if (idx === 1 && mIds[2]) {
-        if (typeof loserPlayerId === 'number') opts.bracket.third_place = Number(loserPlayerId)
+        if (typeof loserPlayerId === 'number') bracket.third_place = Number(loserPlayerId)
         const next = await db.query('select player_ids from matches where id=$1', [mIds[2]])
         const arr = (next.rows[0] && next.rows[0].player_ids) || []
         const merged = arr.length >= 2 ? arr : [...arr, Number(winnerPlayerId)]
@@ -1009,11 +1083,11 @@ router.post('/matches/:id/winner', async (req, res) => {
         await db.query('update matches set player_ids=$1 where id=$2', [JSON.stringify(merged), mIds[3]])
         nextAssigned = { matchId: mIds[3], playerIds: merged }
       } else if (idx === 3) {
-        opts.bracket.champion = Number(winnerPlayerId)
-        if (typeof loserPlayerId === 'number') opts.bracket.runner_up = Number(loserPlayerId)
+        bracket.champion = Number(winnerPlayerId)
+        if (typeof loserPlayerId === 'number') bracket.runner_up = Number(loserPlayerId)
       }
-      await db.query('update club_match_templates set options=$2 where id=$1', [tplId, opts])
-      return res.json({ ok: true, nextAssigned, bracket: opts.bracket })
+      await save()
+      return res.json({ ok: true, nextAssigned, bracket })
     } catch (e) {
       return res.status(500).json({ error: 'winner submit failed' })
     }

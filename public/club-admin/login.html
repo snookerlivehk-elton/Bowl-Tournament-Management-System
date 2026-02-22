@@ -80,18 +80,11 @@
       <tbody id="tplTable"></tbody>
     </table>
   </div>
-  <div style="margin-top:10px">
-    <h4>初賽總分 → 種子</h4>
-    <p>格式：每行「playerId,total」，例如「12, 680」</p>
-    <textarea id="seedInput" rows="6" style="width:100%" placeholder="12,680&#10;34,720&#10;..."></textarea>
-    <div style="margin-top:6px">
-      <button onclick="calcSeeds()">計算前五種子</button>
-      <input id="assignTplId" placeholder="模板ID（用於指派）" style="width:120px">
-      <input id="assignMatchIds" placeholder="matchIds 用逗號分隔（4 個）" style="width:260px">
-      <input id="assignSeeds" placeholder="seeds 用逗號分隔（5 個，最高分在前）" style="width:260px">
-      <button onclick="assignSeeds()">指派種子到淘汰賽</button>
-    </div>
-  </div>
+  <!-- 舊版模板與種子工具已移至賽事/階段下方的「階梯種子工具」，這裡保留隱藏開關 -->
+</div>
+<div style="margin:8px 0">
+  <button onclick="document.getElementById('templates').style.display = (document.getElementById('templates').style.display==='none'?'block':'none')">顯示/隱藏舊版模板工具</button>
+  <span style="font-size:12px;opacity:.7">（建議改用「賽事與階段」）</span>
 </div>
 <div class="card" id="competitions" style="display:none">
   <h3>賽事與階段</h3>
@@ -153,6 +146,22 @@
       <thead><tr><th>ID</th><th>Seq</th><th>名稱</th><th>賽制</th><th>狀態</th><th>操作</th></tr></thead>
       <tbody id="stageTable"></tbody>
     </table>
+  </div>
+  <div style="margin-top:14px" id="stageSeedTools" hidden>
+    <h4>階梯種子工具（選取階段後）</h4>
+    <div class="row">
+      <div><label>階段ID</label><br><input id="seedStageId" readonly></div>
+      <div><label>matchIds</label><br><input id="seedStageMatchIds" style="width:300px" placeholder="自動帶入，可修改"></div>
+    </div>
+    <div style="margin-top:6px">
+      <label>貼入初賽總分（每行 playerId,total）</label>
+      <textarea id="seedStageInput" rows="6" style="width:100%" placeholder="12,680&#10;34,720&#10;..."></textarea>
+    </div>
+    <div style="margin-top:6px">
+      <button onclick="stageCalcSeeds()">計算前五種子</button>
+      <input id="seedStageSeeds" placeholder="seeds 5 個，最高分在前" style="width:260px">
+      <button onclick="stageAssignSeeds()">指派種子到淘汰賽</button>
+    </div>
   </div>
 </div>
 <div class="card"><div id="log">等待操作…</div></div>
@@ -218,23 +227,6 @@ async function showPlan(id){
 }
 async function generateMatches(id){
   const d=await authedFetch('/api/club/templates/'+id+'/generate',{method:'POST'})
-  log(d)
-}
-async function calcSeeds(){
-  const tplIdPrompt = prompt('請輸入模板ID（用於存檔 seeds）')
-  const lines=document.getElementById('seedInput').value.trim().split(/\r?\n/).filter(Boolean)
-  const results=lines.map(l=>{const m=l.split(',');return {playerId:Number(m[0].trim()), total:Number(m[1].trim())}})
-  const d=await authedFetch('/api/club/templates/'+Number(tplIdPrompt)+'/seeds',{method:'POST',body:JSON.stringify({results})})
-  log(d)
-  document.getElementById('assignTplId').value=String(tplIdPrompt||'')
-  const s=(d.seeds||[])
-  document.getElementById('assignSeeds').value=s.join(',')
-}
-async function assignSeeds(){
-  const tplId=Number(document.getElementById('assignTplId').value||'0')
-  const mids=(document.getElementById('assignMatchIds').value||'').split(',').map(x=>Number(x.trim())).filter(Boolean)
-  const seeds=(document.getElementById('assignSeeds').value||'').split(',').map(x=>Number(x.trim())).filter(Boolean)
-  const d=await authedFetch('/api/club/templates/'+tplId+'/assign-seeds',{method:'POST',body:JSON.stringify({matchIds:mids,seeds})})
   log(d)
 }
 async function loadCompetitions(){
@@ -307,13 +299,36 @@ async function loadStages(){
   const tbody=document.getElementById('stageTable');tbody.innerHTML=''
   for(const s of list){
     const tr=document.createElement('tr')
-    tr.innerHTML=`<td>${s.id}</td><td>${s.seq}</td><td>${s.name}</td><td>${s.format_type}</td><td>${s.status}</td><td><button onclick="generateStage(${s.id})">生成骨架</button></td>`
+    tr.innerHTML=`<td>${s.id}</td><td>${s.seq}</td><td>${s.name}</td><td>${s.format_type}</td><td>${s.status}</td><td><button onclick="generateStage(${s.id})">生成骨架</button> ${s.format_type==='stepladder'?`<button onclick="openStageSeed(${s.id})">種子工具</button>`:''}</td>`
     tbody.appendChild(tr)
   }
 }
 async function generateStage(id){
   const d=await authedFetch('/api/club/stages/'+id+'/generate',{method:'POST'})
   log(d); loadStages()
+}
+async function openStageSeed(id){
+  document.getElementById('stageSeedTools').hidden=false
+  document.getElementById('seedStageId').value=String(id)
+  // 嘗試從列表再取一次資訊取得 matchIds
+  const cid=Number(document.getElementById('stageCompId').value||'0')
+  const list=await authedFetch('/api/club/competitions/'+cid+'/stages',{method:'GET'})
+  const s=list.find(x=>x.id===id)
+  const mids=(s?.config?.bracket?.matchIds)||(s?.config?.generated_match_ids)||[]
+  document.getElementById('seedStageMatchIds').value=(mids||[]).join(',')
+}
+async function stageCalcSeeds(){
+  const id=Number(document.getElementById('seedStageId').value||'0')
+  const lines=document.getElementById('seedStageInput').value.trim().split(/\r?\n/).filter(Boolean)
+  const results=lines.map(l=>{const m=l.split(',');return {playerId:Number(m[0].trim()), total:Number(m[1].trim())}})
+  const d=await authedFetch('/api/club/stages/'+id+'/seeds',{method:'POST',body:JSON.stringify({results})})
+  log(d); document.getElementById('seedStageSeeds').value=(d.seeds||[]).join(',')
+}
+async function stageAssignSeeds(){
+  const id=Number(document.getElementById('seedStageId').value||'0')
+  const seeds=(document.getElementById('seedStageSeeds').value||'').split(',').map(x=>Number(x.trim())).filter(Boolean)
+  const d=await authedFetch('/api/club/stages/'+id+'/assign-seeds',{method:'POST',body:JSON.stringify({seeds})})
+  log(d)
 }
 // 支援兩種帶入方式：#token=... 或 ?token=...
 if(location.hash.startsWith('#token=')){const t=location.hash.slice(7);document.getElementById('tokenInput').value=t;setTok(t);updateUI();loadProfile()}
