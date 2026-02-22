@@ -15,7 +15,8 @@ coverage/
 openclaw-records/
 openclaw-railway-template/
 horse-racing/
-frontend/
+#! allow dedicated frontend workspace
+#!frontend/
 backend/
 extensions/
 android-streamer/
