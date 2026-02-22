@@ -430,7 +430,13 @@ async function stageAssignSeeds(){
 async function openLeagueTools(id){
   document.getElementById('stageLeagueTools').hidden=false
   document.getElementById('seedStageId').value=String(id)
+  // 取名單與階段設定，便於隊制聚合
   const ps=await authedFetch('/api/club/stages/'+id+'/participants',{method:'GET'})
+  const cid=Number(document.getElementById('stageCompId').value||'0')
+  const list=await authedFetch('/api/club/competitions/'+cid+'/stages',{method:'GET'})
+  const s=list.find(x=>x.id===id)||{}
+  window._stageCfg = s
+  window._stageParticipants = ps||[]
   document.getElementById('lgPlayers').value=(ps||[]).join('\n')
 }
 async function saveParticipants(){
@@ -472,11 +478,36 @@ async function loadSchedule(){
 }
 async function loadStandings(){
   const id=Number(document.getElementById('seedStageId').value||'0')
-  const list=await authedFetch('/api/club/stages/'+id+'/standings',{method:'GET'})
+  const data=await authedFetch('/api/club/stages/'+id+'/standings',{method:'GET'})
+  let rows = data.rows || data // 兼容舊格式
+  // 若為隊制且 team_size 存在，前端依名單順序做聚合（避免後端未升級）
+  const cfg = window._stageCfg||{}
+  const tsize = Number((cfg.config&&cfg.config.team_size)||0)
+  if ((cfg.config&&cfg.config.participant_kind)==='team' && tsize>=2){
+    const order = (window._stageParticipants||[]).slice()
+    const idxMap = new Map(order.map((pid,i)=>[Number(pid),i]))
+    const teams = new Map()
+    function tEnsure(no){ if(!teams.has(no)) teams.set(no,{ label:'Team '+no, points:0, matches:0, frames_w:0, frames_d:0, frames_l:0, pinfall:0 }) }
+    for(const p of rows){
+      const idx = idxMap.get(Number(p.playerId||p.label))
+      if(idx===undefined) continue
+      const no = Math.floor(idx/tsize)+1
+      tEnsure(no)
+      const t=teams.get(no)
+      t.points += Number(p.points||0)
+      t.matches += Number(p.matches||0)
+      t.frames_w += Number(p.frames_w||0)
+      t.frames_d += Number(p.frames_d||0)
+      t.frames_l += Number(p.frames_l||0)
+      t.pinfall += Number(p.pinfall||0)
+    }
+    rows = Array.from(teams.values()).sort((a,b)=> b.points-a.points || b.pinfall-a.pinfall || b.frames_w-a.frames_w).map((x,i)=>Object.assign({rank:i+1},x))
+  }
   const tb=document.getElementById('standingsTable'); tb.innerHTML=''
-  for(const s of list){
+  for(const s of rows){
     const tr=document.createElement('tr')
-    tr.innerHTML=`<td>${s.rank}</td><td>${s.playerId}</td><td>${s.points}</td><td>${s.matches}</td><td>${s.frames_w}-${s.frames_d}-${s.frames_l}</td><td>${s.pinfall}</td>`
+    const name = s.label || s.playerId
+    tr.innerHTML=`<td>${s.rank||''}</td><td>${name}</td><td>${s.points}</td><td>${s.matches}</td><td>${s.frames_w}-${s.frames_d}-${s.frames_l}</td><td>${s.pinfall}</td>`
     tb.appendChild(tr)
   }
 }
@@ -503,11 +534,34 @@ async function completeRound(r){
 }
 async function loadStats(){
   const id=Number(document.getElementById('seedStageId').value||'0')
-  const list=await authedFetch('/api/club/stages/'+id+'/stats',{method:'GET'})
+  const data=await authedFetch('/api/club/stages/'+id+'/stats',{method:'GET'})
+  let list = data.rows || data
+  const cfg = window._stageCfg||{}
+  const tsize = Number((cfg.config&&cfg.config.team_size)||0)
+  if ((cfg.config&&cfg.config.participant_kind)==='team' && tsize>=2){
+    const order = (window._stageParticipants||[]).slice()
+    const idxMap = new Map(order.map((pid,i)=>[Number(pid),i]))
+    const teams = new Map()
+    function tEnsure(no){ if(!teams.has(no)) teams.set(no,{ label:'Team '+no, pinfall_total:0, games:0, matches:0, best_match_total:0, best_frame_score:0, average_per_frame:0 }) }
+    for(const p of list){
+      const idx = idxMap.get(Number(p.playerId||p.label))
+      if(idx===undefined) continue
+      const no = Math.floor(idx/tsize)+1
+      tEnsure(no)
+      const t=teams.get(no)
+      t.pinfall_total += Number(p.pinfall_total||0)
+      t.games += Number(p.games||0)
+      t.matches += Number(p.matches||0)
+      if (Number(p.best_match_total||0)>t.best_match_total) t.best_match_total=Number(p.best_match_total||0)
+      if (Number(p.best_frame_score||0)>t.best_frame_score) t.best_frame_score=Number(p.best_frame_score||0)
+    }
+    list = Array.from(teams.values()).map(x=>Object.assign(x,{ average_per_frame: x.games? (x.pinfall_total/x.games): 0 }))
+  }
   const tb=document.getElementById('statsTable'); tb.innerHTML=''
   for(const s of list){
     const tr=document.createElement('tr')
-    tr.innerHTML=`<td>${s.playerId}</td><td>${s.best_match_total}</td><td>${s.best_frame_score}</td><td>${s.pinfall_total}</td><td>${(s.average_per_frame||0).toFixed(2)}</td><td>${s.matches}</td><td>${s.games}</td>`
+    const name = s.label || s.playerId
+    tr.innerHTML=`<td>${name}</td><td>${s.best_match_total}</td><td>${s.best_frame_score}</td><td>${s.pinfall_total}</td><td>${(s.average_per_frame||0).toFixed(2)}</td><td>${s.matches}</td><td>${s.games}</td>`
     tb.appendChild(tr)
   }
 }
