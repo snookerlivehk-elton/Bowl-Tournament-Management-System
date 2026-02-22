@@ -165,6 +165,17 @@
       <button onclick="stageAssignSeeds()">指派種子到淘汰賽</button>
     </div>
   </div>
+  <div style="margin-top:14px" id="stageLeagueTools" hidden>
+    <h4>聯賽工具（選取聯賽階段後）</h4>
+    <div style="margin-top:6px">
+      <label>參賽名單（每行 playerId）</label>
+      <textarea id="lgPlayers" rows="6" style="width:100%" placeholder="12&#10;34&#10;57&#10;..."></textarea>
+      <div style="margin-top:6px">
+        <button onclick="saveParticipants()">儲存參賽名單</button>
+        <button onclick="generateLeagueSchedule()">生成聯賽賽程</button>
+      </div>
+    </div>
+  </div>
 </div>
 <div class="card"><div id="log">等待操作…</div></div>
 <script>
@@ -343,7 +354,7 @@ async function loadStages(){
   const tbody=document.getElementById('stageTable');tbody.innerHTML=''
   for(const s of list){
     const tr=document.createElement('tr')
-    tr.innerHTML=`<td>${s.id}</td><td>${s.seq}</td><td>${s.name}</td><td>${s.format_type}</td><td>${s.status}</td><td><button onclick="generateStage(${s.id})">生成骨架</button> ${s.format_type==='stepladder'?`<button onclick="openStageSeed(${s.id})">種子工具</button>`:''}</td>`
+    tr.innerHTML=`<td>${s.id}</td><td>${s.seq}</td><td>${s.name}</td><td>${s.format_type}</td><td>${s.status}</td><td><button onclick="generateStage(${s.id})">生成骨架</button> ${s.format_type==='stepladder'?`<button onclick="openStageSeed(${s.id})">種子工具</button>`:`<button onclick="openLeagueTools(${s.id})">聯賽工具</button>`}</td>`
     tbody.appendChild(tr)
   }
 }
@@ -372,6 +383,23 @@ async function stageAssignSeeds(){
   const id=Number(document.getElementById('seedStageId').value||'0')
   const seeds=(document.getElementById('seedStageSeeds').value||'').split(',').map(x=>Number(x.trim())).filter(Boolean)
   const d=await authedFetch('/api/club/stages/'+id+'/assign-seeds',{method:'POST',body:JSON.stringify({seeds})})
+  log(d)
+}
+async function openLeagueTools(id){
+  document.getElementById('stageLeagueTools').hidden=false
+  document.getElementById('seedStageId').value=String(id)
+  const ps=await authedFetch('/api/club/stages/'+id+'/participants',{method:'GET'})
+  document.getElementById('lgPlayers').value=(ps||[]).join('\\n')
+}
+async function saveParticipants(){
+  const id=Number(document.getElementById('seedStageId').value||'0')
+  const ids=(document.getElementById('lgPlayers').value||'').split(/\\r?\\n/).map(x=>Number(x.trim())).filter(Boolean)
+  const d=await authedFetch('/api/club/stages/'+id+'/participants',{method:'POST',body:JSON.stringify({playerIds:ids})})
+  log(d)
+}
+async function generateLeagueSchedule(){
+  const id=Number(document.getElementById('seedStageId').value||'0')
+  const d=await authedFetch('/api/club/stages/'+id+'/schedule/round-robin',{method:'POST'})
   log(d)
 }
 // 支援兩種帶入方式：#token=... 或 ?token=...

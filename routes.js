@@ -712,6 +712,104 @@ router.post('/club/stages/:id/generate', clubAuth, async (req, res) => {
   res.status(201).json({ matchIds: [] })
 })
 
+router.get('/club/stages/:id/participants', clubAuth, async (req, res) => {
+  const stageId = parseInt(req.params.id, 10)
+  if (db.available()) {
+    try { await ensureCompetitions(); const r = await db.query('select player_id from stage_participants where stage_id=$1 order by player_id', [stageId]); return res.json(r.rows.map(x=>x.player_id)) } catch (e) { return res.status(500).json({ error: 'list participants failed' }) }
+  }
+  res.json([])
+})
+
+router.post('/club/stages/:id/participants', clubAuth, async (req, res) => {
+  const stageId = parseInt(req.params.id, 10)
+  const { playerIds } = req.body || {}
+  if (!Array.isArray(playerIds) || playerIds.length < 2) return res.status(400).json({ error: 'playerIds must be an array with length >= 2' })
+  if (db.available()) {
+    try {
+      await ensureCompetitions()
+      await db.query('delete from stage_participants where stage_id=$1', [stageId])
+      for (const pid of playerIds) {
+        await db.query('insert into stage_participants(stage_id,player_id) values($1,$2)', [stageId, Number(pid)])
+      }
+      return res.status(201).json({ saved: playerIds.length })
+    } catch (e) {
+      return res.status(500).json({ error: 'save participants failed' })
+    }
+  }
+  res.status(201).json({ saved: playerIds.length })
+})
+
+function roundRobinPairs(ids) {
+  const list = [...ids]
+  const hasBye = list.length % 2 === 1
+  if (hasBye) list.push(null)
+  const n = list.length
+  const half = n / 2
+  const rounds = n - 1
+  const fixtures = []
+  for (let r = 0; r < rounds; r++) {
+    const pairs = []
+    for (let i = 0; i < half; i++) {
+      const a = list[i]
+      const b = list[n - 1 - i]
+      if (a != null && b != null) pairs.push([a, b])
+    }
+    fixtures.push(pairs)
+    // rotate
+    const fixed = list[0]
+    const rest = list.slice(1)
+    rest.unshift(rest.pop())
+    list.splice(0, list.length, fixed, ...rest)
+  }
+  return fixtures
+}
+
+router.post('/club/stages/:id/schedule/round-robin', clubAuth, async (req, res) => {
+  const clubId = req.clubId
+  const stageId = parseInt(req.params.id, 10)
+  if (db.available()) {
+    try {
+      await ensureCompetitions()
+      const sr = await db.query('select competition_id, lanes, frames_per_match, config from competition_stages where id=$1', [stageId])
+      if (sr.rowCount === 0) return res.status(404).json({ error: 'stage not found' })
+      const s = sr.rows[0]
+      const lanes = s.lanes || 1
+      const frames = s.frames_per_match || 4
+      const cfg = s.config || {}
+      const roundsCfg = Number(cfg.rounds || 1)
+      const lanePolicy = cfg.lane_policy || 'sequential'
+      const pr = await db.query('select player_id from stage_participants where stage_id=$1 order by player_id', [stageId])
+      const ids = pr.rows.map(x => Number(x.player_id))
+      if (ids.length < 2) return res.status(400).json({ error: 'participants insufficient' })
+      const baseFixtures = roundRobinPairs(ids)
+      const fixtures = []
+      for (let k = 0; k < roundsCfg; k++) fixtures.push(...baseFixtures)
+      const createdIds = []
+      let slot = 0
+      fixtures.forEach((pairs, rIdx) => {
+        pairs.forEach((pair, i) => {
+          const laneIndex = (lanePolicy === 'snake' && (rIdx % 2 === 1)) ? (lanes - 1 - (i % lanes)) : (i % lanes)
+          const lane = 1 + laneIndex
+          const timeSlot = Math.floor(i / lanes)
+          // create match
+          createdIds.push({ pair, round: rIdx + 1, lane, slot: timeSlot })
+        })
+      })
+      const matchIds = []
+      for (const m of createdIds) {
+        const mr = await db.query('insert into matches(competition_id,club_id,player_ids,frames_per_match,status) values($1,$2,$3,$4,$5) returning id', [s.competition_id, clubId, JSON.stringify(m.pair), frames, 'scheduled'])
+        matchIds.push(mr.rows[0].id)
+        await db.query('insert into stage_matches(stage_id,match_id,round_no,slot_info) values($1,$2,$3,$4)', [stageId, mr.rows[0].id, m.round, JSON.stringify({ lane: m.lane, slot: m.slot })])
+      }
+      const cfg2 = Object.assign({}, cfg, { schedule_status: 'generated', rr_rounds: fixtures.length })
+      await db.query('update competition_stages set config=$2, status=$3 where id=$1', [stageId, cfg2, 'generated'])
+      return res.status(201).json({ matchIds })
+    } catch (e) {
+      return res.status(500).json({ error: 'schedule failed' })
+    }
+  }
+  res.status(201).json({ matchIds: [] })
+})
 router.post('/club/stages/:id/seeds', clubAuth, async (req, res) => {
   const stageId = parseInt(req.params.id, 10)
   const { results } = req.body || {}
