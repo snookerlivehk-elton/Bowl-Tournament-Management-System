@@ -36,7 +36,7 @@
   </div>
 </div>
 <div class="card">
-  <div><label>Token（若未帶入請貼上）</label><br><input id="tokenInput" style="width:100%"></div>
+  <div><label>Token（可貼純 token 或整個連結）</label><br><input id="tokenInput" style="width:100%"></div>
   <div style="margin-top:10px"><button onclick="useToken()">使用 Token</button> <span id="status">未登入</span></div>
 </div>
 <div class="card" id="profile" style="display:none">
@@ -180,7 +180,18 @@ function updateUI(){
   const btn1=document.getElementById('btnCreateComp'); if(btn1) btn1.disabled=!t;
   const btn2=document.getElementById('btnCreateStage'); if(btn2) btn2.disabled=!t;
 }
-function useToken(){const t=document.getElementById('tokenInput').value.trim();if(!t){log('請貼上 token');return}setTok(t);updateUI();loadProfile()}
+function useToken(){
+  let v=document.getElementById('tokenInput').value.trim();
+  if(!v){log('請貼上 token 或含 token 的連結');return}
+  let t=v;
+  try{
+    if(v.includes('token=')){
+      if(v.includes('#token=')){ t=v.split('#token=')[1] }
+      else { const u=new URL(v); t=u.searchParams.get('token')||v }
+    }
+  }catch(e){}
+  setTok(t); updateUI(); loadProfile(); try{loadCompetitions()}catch(e){}
+}
 async function authedFetch(url,opts){
   const h=Object.assign({},(opts&&opts.headers)||{}, {'Authorization':'Bearer '+tok(),'Content-Type':'application/json'})
   const r=await fetch(url,Object.assign({},opts||{}, {headers:h}))
