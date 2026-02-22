@@ -640,6 +640,21 @@ router.post('/club/competitions/:id/stages', clubAuth, async (req, res) => {
   const competitionId = parseInt(req.params.id, 10)
   const { seq, name, formatType, lanes, framesPerMatch, config, advancement } = req.body || {}
   if (!name || !formatType) return res.status(400).json({ error: 'name and formatType required' })
+  if (framesPerMatch && framesPerMatch < 1) return res.status(400).json({ error: 'framesPerMatch invalid' })
+  if (formatType === 'stepladder') {
+    const seeds = Number(config?.seeds || 0)
+    if (!seeds || seeds < 3) return res.status(400).json({ error: 'stepladder requires seeds >= 3' })
+  }
+  if (formatType === 'league') {
+    const rounds = Number(config?.rounds || 0)
+    const lanePolicy = config?.lane_policy
+    const scoring = config?.scoring
+    if (!rounds || rounds < 1) return res.status(400).json({ error: 'league requires rounds >= 1' })
+    if (!lanePolicy) return res.status(400).json({ error: 'league requires lane_policy' })
+    if (!scoring || scoring?.per_game?.win === undefined || scoring?.per_game?.draw === undefined || scoring?.per_game?.loss === undefined) {
+      return res.status(400).json({ error: 'league requires scoring.per_game win/draw/loss' })
+    }
+  }
   if (db.available()) {
     try {
       await ensureCompetitions()
@@ -678,6 +693,12 @@ router.post('/club/stages/:id/generate', clubAuth, async (req, res) => {
           ids.push(mr.rows[0].id)
           await db.query('insert into stage_matches(stage_id,match_id,round_no,slot_info) values($1,$2,$3,$4)', [stageId, mr.rows[0].id, i, JSON.stringify({ lane: null })])
         }
+      } else if (s.format_type === 'league') {
+        // 先占位：聯賽需要參賽名單後才能生成賽程，這裡標記為 planned
+        ids = []
+        const cfg = Object.assign({}, s.config || {}, { schedule_status: 'planned' })
+        await db.query('update competition_stages set config=$2, status=$3 where id=$1', [stageId, cfg, 'planned'])
+        return res.status(201).json({ matchIds: ids })
       } else {
         ids = []
       }

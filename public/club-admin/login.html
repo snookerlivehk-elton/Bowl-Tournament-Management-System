@@ -79,10 +79,39 @@
       <div><label>賽事ID</label><br><input id="stageCompId" placeholder="從上表選取後填入"></div>
       <div><label>順序</label><br><input id="stageSeq" type="number" min="1" value="1"></div>
       <div><label>名稱</label><br><input id="stageName" placeholder="例如 階段一"></div>
-      <div><label>賽制</label><br><select id="stageFormat"><option value="stepladder">stepladder</option><option value="league">league</option></select></div>
+      <div><label>賽制</label><br><select id="stageFormat" onchange="renderStageConfig()"><option value="stepladder">stepladder</option><option value="league">league</option></select></div>
       <div><label>球道數</label><br><input id="stageLanes" type="number" min="1" value="8"></div>
       <div><label>每場局數</label><br><input id="stageFrames" type="number" min="1" value="12"></div>
-      <div><label>Seeds/或每制參數</label><br><input id="stageSeeds" type="number" min="3" value="5"></div>
+      <div><label>參賽型態</label><br><select id="stageKind"><option value="single">single</option><option value="double">double</option><option value="team">team</option></select></div>
+      <div><label>隊伍人數（team）</label><br><input id="stageTeamSize" type="number" min="2" value="3"></div>
+    </div>
+    <div id="cfg-stepladder" class="row" style="margin-top:8px">
+      <div><label>Seeds（人數）</label><br><input id="stageSeeds" type="number" min="3" value="5"></div>
+      <div><label>球道輪換</label><br><select id="stageLanePolicy"><option value="sequential">sequential</option><option value="snake">snake</option><option value="rotate_by_pair">rotate_by_pair</option></select></div>
+    </div>
+    <div id="cfg-league" style="display:none;margin-top:8px">
+      <div class="row">
+        <div><label>循環次數</label><br><select id="lgRounds"><option value="1">單循環</option><option value="2">雙循環</option></select></div>
+        <div><label>球道輪換</label><br><select id="lgLanePolicy"><option value="sequential">sequential</option><option value="snake">snake</option><option value="rotate_by_pair">rotate_by_pair</option></select></div>
+        <div><label>對賽配對</label><br><select id="lgPairing"><option value="round_robin">round_robin</option><option value="by_last_week_ranking">by_last_week_ranking</option></select></div>
+      </div>
+      <div style="margin-top:6px"><b>積分規則</b></div>
+      <div class="row">
+        <div><label>每局：勝</label><br><input id="lgWin" type="number" step="0.5" value="1"></div>
+        <div><label>每局：和</label><br><input id="lgDraw" type="number" step="0.5" value="0.5"></div>
+        <div><label>每局：負</label><br><input id="lgLoss" type="number" step="0.5" value="0"></div>
+        <div><label>整場總分加成</label><br>
+          <select id="lgMatchBonusEnable"><option value="true">啟用</option><option value="false">停用</option></select>
+        </div>
+        <div><label>加成分</label><br><input id="lgMatchBonusPts" type="number" step="0.5" value="1"></div>
+        <div><label>每場最高分</label><br><input id="lgMaxPts" type="number" step="0.5" value="5"></div>
+      </div>
+      <div style="margin-top:6px"><b>讓分</b></div>
+      <div class="row">
+        <div><label>啟用讓分</label><br><select id="lgHcpEnable"><option value="false">否</option><option value="true">是</option></select></div>
+        <div><label>讓分方式</label><br><select id="lgHcpType"><option value="per_game_fixed">每局固定</option><option value="none">不使用</option></select></div>
+        <div><label>每局讓分</label><br><input id="lgHcpValue" type="number" value="0"></div>
+      </div>
     </div>
     <div style="margin-top:8px"><button onclick="createStage()">新增階段</button></div>
   </div>
@@ -203,13 +232,38 @@ async function createCompetition(){
 async function createStage(){
   const cid=Number(document.getElementById('stageCompId').value||'0')
   if(!cid){log('請先選取賽事');return}
+  const format=document.getElementById('stageFormat').value
   const body={
     seq:Number(document.getElementById('stageSeq').value||'1'),
     name:document.getElementById('stageName').value.trim()||'階段',
-    formatType:document.getElementById('stageFormat').value,
+    formatType:format,
     lanes:Number(document.getElementById('stageLanes').value||'1'),
     framesPerMatch:Number(document.getElementById('stageFrames').value||'1'),
-    config:{seeds:Number(document.getElementById('stageSeeds').value||'5')}
+    config:{},
+    advancement:null
+  }
+  const kind=document.getElementById('stageKind').value
+  const teamSize=Number(document.getElementById('stageTeamSize').value||'0')
+  if(format==='stepladder'){
+    body.config={seeds:Number(document.getElementById('stageSeeds').value||'5'), lane_policy:document.getElementById('stageLanePolicy').value, participant_kind:kind, team_size:teamSize||null}
+  }else if(format==='league'){
+    body.config={
+      rounds:Number(document.getElementById('lgRounds').value||'1'),
+      lane_policy:document.getElementById('lgLanePolicy').value,
+      pairing_policy:document.getElementById('lgPairing').value,
+      participant_kind:kind,
+      team_size:teamSize||null,
+      scoring:{
+        per_game:{ win:Number(document.getElementById('lgWin').value||'1'), draw:Number(document.getElementById('lgDraw').value||'0.5'), loss:Number(document.getElementById('lgLoss').value||'0') },
+        match_total_bonus:{ enabled:(document.getElementById('lgMatchBonusEnable').value==='true'), points:Number(document.getElementById('lgMatchBonusPts').value||'1') },
+        max_match_points:Number(document.getElementById('lgMaxPts').value||'5')
+      },
+      handicap:{
+        enabled:(document.getElementById('lgHcpEnable').value==='true'),
+        type:document.getElementById('lgHcpType').value,
+        value:Number(document.getElementById('lgHcpValue').value||'0')
+      }
+    }
   }
   const d=await authedFetch('/api/club/competitions/'+cid+'/stages',{method:'POST',body:JSON.stringify(body)})
   log(d); loadStages()
@@ -241,4 +295,10 @@ window.enableTemplate = enableTemplate
 window.deleteTemplate = deleteTemplate
 if(tok()){try{loadTemplates()}catch(e){}}
 if(tok()){try{loadCompetitions()}catch(e){}}
+function renderStageConfig(){
+  const f=document.getElementById('stageFormat').value
+  document.getElementById('cfg-stepladder').style.display=(f==='stepladder')?'flex':'none'
+  document.getElementById('cfg-league').style.display=(f==='league')?'block':'none'
+}
+renderStageConfig()
 </script>
