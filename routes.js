@@ -880,9 +880,9 @@ router.get('/club/stages/:id/standings', clubAuth, async (req, res) => {
       const matchIds = mr.rows.map(x => x.match_id)
       if (matchIds.length === 0) return res.json([])
       const fr = await db.query('select match_id, frame_no, scores from frames where match_id = any($1) order by match_id, frame_no', [matchIds])
-      // Also need player_ids for each match
-      const mrows = await db.query('select id, player_ids from matches where id = any($1)', [matchIds])
+      const mrows = await db.query('select id, player_ids, frames_per_match from matches where id = any($1)', [matchIds])
       const playersByMatch = new Map(mrows.rows.map(x => [x.id, x.player_ids || []]))
+      const framesLimit = new Map(mrows.rows.map(x => [x.id, Number(x.frames_per_match || 4)]))
       const framesByMatch = new Map()
       for (const row of fr.rows) {
         if (!framesByMatch.has(row.match_id)) framesByMatch.set(row.match_id, [])
@@ -895,7 +895,8 @@ router.get('/club/stages/:id/standings', clubAuth, async (req, res) => {
         if (pids.length < 2) continue
         const [p1, p2] = pids.map(Number)
         ensure(p1); ensure(p2)
-        const frames = framesByMatch.get(mid) || []
+        const limit = framesLimit.get(mid) || 4
+        const frames = (framesByMatch.get(mid) || []).filter(f => Number(f.frame_no) <= limit)
         let p1Total = 0, p2Total = 0
         let pts1 = 0, pts2 = 0
         for (const f of frames) {
@@ -940,8 +941,9 @@ router.get('/club/stages/:id/stats', clubAuth, async (req, res) => {
       const mr = await db.query('select match_id from stage_matches where stage_id=$1', [stageId])
       const matchIds = mr.rows.map(x => x.match_id)
       if (matchIds.length === 0) return res.json([])
-      const mrows = await db.query('select id, player_ids from matches where id = any($1)', [matchIds])
+      const mrows = await db.query('select id, player_ids, frames_per_match from matches where id = any($1)', [matchIds])
       const playersByMatch = new Map(mrows.rows.map(x => [x.id, x.player_ids || []]))
+      const framesLimit = new Map(mrows.rows.map(x => [x.id, Number(x.frames_per_match || 4)]))
       const fr = await db.query('select match_id, frame_no, scores from frames where match_id = any($1) order by match_id, frame_no', [matchIds])
       const stats = new Map()
       function ensure(p){ if(!stats.has(p)) stats.set(p,{ playerId:p, pinfall_total:0, games:0, matches:0, best_match_total:0, best_frame_score:0 }) }
@@ -953,7 +955,8 @@ router.get('/club/stages/:id/stats', clubAuth, async (req, res) => {
       for (const mid of matchIds) {
         const pids = playersByMatch.get(mid) || []
         if (pids.length < 2) continue
-        const frames = framesByMatch.get(mid) || []
+        const limit = framesLimit.get(mid) || 4
+        const frames = (framesByMatch.get(mid) || []).filter(f => Number(f.frame_no) <= limit)
         const totals = [0,0]
         frames.forEach(f=>{
           const s=f.scores||{}
@@ -1354,7 +1357,8 @@ router.get('/matches/:id/summary', async (req, res) => {
       if (mr.rowCount === 0) return res.status(404).json({ error: 'match not found' })
       const match = mr.rows[0]
       const fr = await db.query('select frame_no, scores from frames where match_id=$1 order by frame_no', [id])
-      return res.json({ id, playerIds: match.player_ids, framesPerMatch: match.frames_per_match, status: match.status, frames: fr.rows })
+      const limited = fr.rows.filter(f => Number(f.frame_no) <= Number(match.frames_per_match || 4))
+      return res.json({ id, playerIds: match.player_ids, framesPerMatch: match.frames_per_match, status: match.status, frames: limited })
     } catch (e) {
       if (e && e.code === '42703') {
         try {
@@ -1363,7 +1367,8 @@ router.get('/matches/:id/summary', async (req, res) => {
           if (mr2.rowCount === 0) return res.status(404).json({ error: 'match not found' })
           const match2 = mr2.rows[0]
           const fr2 = await db.query('select frame_no, scores from frames where match_id=$1 order by frame_no', [id])
-          return res.json({ id, playerIds: match2.player_ids, framesPerMatch: match2.frames_per_match, status: match2.status, frames: fr2.rows })
+          const limited2 = fr2.rows.filter(f => Number(f.frame_no) <= Number(match2.frames_per_match || 4))
+          return res.json({ id, playerIds: match2.player_ids, framesPerMatch: match2.frames_per_match, status: match2.status, frames: limited2 })
         } catch (e2) {
           return res.status(500).json({ error: 'schema missing: frames.scores', action: 'set INIT_DB=true then redeploy' })
         }
@@ -1386,6 +1391,10 @@ router.post('/matches/:id/scores', async (req, res) => {
   if (!frameNo || !scores || typeof scores !== 'object') return res.status(400).json({ error: 'frameNo and scores required' })
   if (db.available()) {
     try {
+      const mr = await db.query('select frames_per_match from matches where id=$1', [id])
+      if (mr.rowCount === 0) return res.status(404).json({ error: 'match not found' })
+      const maxFrames = Number(mr.rows[0].frames_per_match || 4)
+      if (Number(frameNo) > maxFrames) return res.status(400).json({ error: 'frameNo exceeds frames_per_match' })
       const fr = await db.query('select id from frames where match_id=$1 and frame_no=$2', [id, frameNo])
       if (fr.rowCount === 0) {
         const ins = await db.query('insert into frames(match_id,frame_no,scores) values($1,$2,$3) returning id', [id, frameNo, JSON.stringify(scores)])
@@ -1398,6 +1407,10 @@ router.post('/matches/:id/scores', async (req, res) => {
       if (e && e.code === '42703') {
         try {
           await db.query('alter table if exists frames add column if not exists scores jsonb')
+          const mr2 = await db.query('select frames_per_match from matches where id=$1', [id])
+          if (mr2.rowCount === 0) return res.status(404).json({ error: 'match not found' })
+          const maxFrames2 = Number(mr2.rows[0].frames_per_match || 4)
+          if (Number(frameNo) > maxFrames2) return res.status(400).json({ error: 'frameNo exceeds frames_per_match' })
           const fr2 = await db.query('select id from frames where match_id=$1 and frame_no=$2', [id, frameNo])
           if (fr2.rowCount === 0) {
             const ins2 = await db.query('insert into frames(match_id,frame_no,scores) values($1,$2,$3) returning id', [id, frameNo, JSON.stringify(scores)])
