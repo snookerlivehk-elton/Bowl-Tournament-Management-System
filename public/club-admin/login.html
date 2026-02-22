@@ -88,9 +88,10 @@
 </div>
 <div class="card" id="competitions" style="display:none">
   <h3>賽事與階段</h3>
+  <div id="compNotice" style="display:none;color:#b00020;margin:6px 0">尚未登入或 Token 已失效，請先在上方貼入 Token 並按「使用 Token」。</div>
   <div class="row">
     <div><label>賽事名稱</label><br><input id="compName"></div>
-    <div style="align-self:end"><button onclick="createCompetition()">建立賽事</button></div>
+    <div style="align-self:end"><button id="btnCreateComp" onclick="createCompetition()">建立賽事</button></div>
   </div>
   <div style="margin-top:10px">
     <table>
@@ -101,7 +102,7 @@
   <div style="margin-top:14px">
     <h4>新增階段</h4>
     <div class="row">
-      <div><label>賽事ID</label><br><input id="stageCompId" placeholder="從上表選取後填入"></div>
+      <div><label>賽事ID</label><br><input id="stageCompId" placeholder="系統自動帶入" readonly></div>
       <div><label>順序</label><br><input id="stageSeq" type="number" min="1" value="1"></div>
       <div><label>名稱</label><br><input id="stageName" placeholder="例如 階段一"></div>
       <div><label>賽制</label><br><select id="stageFormat" onchange="renderStageConfig()"><option value="stepladder">stepladder</option><option value="league">league</option></select></div>
@@ -138,7 +139,7 @@
         <div><label>每局讓分</label><br><input id="lgHcpValue" type="number" value="0"></div>
       </div>
     </div>
-    <div style="margin-top:8px"><button onclick="createStage()">新增階段</button></div>
+    <div style="margin-top:8px"><button id="btnCreateStage" onclick="createStage()">新增階段</button></div>
   </div>
   <div style="margin-top:10px">
     <h4>階段列表</h4>
@@ -169,9 +170,30 @@
 function log(x){document.getElementById('log').textContent=(typeof x==='string')?x:JSON.stringify(x,null,2)}
 function tok(){return localStorage.getItem('club_token')||''}
 function setTok(t){localStorage.setItem('club_token',t)}
-function updateUI(){const t=tok();document.getElementById('status').textContent=t?'已登入':'未登入';document.getElementById('profile').style.display=t?'block':'none';document.getElementById('logo').style.display=t?'block':'none';document.getElementById('competitions').style.display=t?'block':'none'}
+function updateUI(){
+  const t=tok();
+  document.getElementById('status').textContent=t?'已登入':'未登入';
+  document.getElementById('profile').style.display=t?'block':'none';
+  document.getElementById('logo').style.display=t?'block':'none';
+  document.getElementById('competitions').style.display=t?'block':'none';
+  const notice=document.getElementById('compNotice'); if(notice) notice.style.display=t?'none':'block';
+  const btn1=document.getElementById('btnCreateComp'); if(btn1) btn1.disabled=!t;
+  const btn2=document.getElementById('btnCreateStage'); if(btn2) btn2.disabled=!t;
+}
 function useToken(){const t=document.getElementById('tokenInput').value.trim();if(!t){log('請貼上 token');return}setTok(t);updateUI();loadProfile()}
-async function authedFetch(url,opts){const h=Object.assign({},(opts&&opts.headers)||{}, {'Authorization':'Bearer '+tok(),'Content-Type':'application/json'});const r=await fetch(url,Object.assign({},opts||{}, {headers:h}));if(!r.ok){const txt=await r.text();try{log(JSON.parse(txt))}catch{log(txt)};throw new Error('request failed')}return r.json()}
+async function authedFetch(url,opts){
+  const h=Object.assign({},(opts&&opts.headers)||{}, {'Authorization':'Bearer '+tok(),'Content-Type':'application/json'})
+  const r=await fetch(url,Object.assign({},opts||{}, {headers:h}))
+  if(r.status===401){
+    alert('尚未登入或 Token 已失效，請在頂部貼入 Token 並按「使用 Token」')
+    localStorage.removeItem('club_token'); updateUI()
+    throw new Error('unauthorized')
+  }
+  if(!r.ok){
+    const txt=await r.text(); try{log(JSON.parse(txt))}catch{log(txt)}; throw new Error('request failed')
+  }
+  return r.json()
+}
 async function loadProfile(){const d=await authedFetch('/api/club/profile',{method:'GET'});document.getElementById('name').value=d.name||'';document.getElementById('region').value=d.region||'';document.getElementById('city').value=d.city||'';document.getElementById('address').value=d.address||'';document.getElementById('contactName').value=d.contact_name||'';document.getElementById('contactPhone').value=d.contact_phone||'';document.getElementById('contactEmail').value=d.contact_email||'';if(d.logo_url){document.getElementById('logoPreview').src=d.logo_url}}
 async function saveProfile(){const body={name:document.getElementById('name').value.trim()||null,region:(document.getElementById('region').value||'').toUpperCase()||null,city:document.getElementById('city').value.trim()||null,address:document.getElementById('address').value.trim()||null,contactName:document.getElementById('contactName').value.trim()||null,contactPhone:document.getElementById('contactPhone').value.trim()||null,contactEmail:document.getElementById('contactEmail').value.trim()||null};const d=await authedFetch('/api/club/profile',{method:'PUT',body:JSON.stringify(body)});log(d);loadProfile()}
 async function uploadLogo(){const f=document.getElementById('logoFile').files[0];if(!f){log('請選取圖片');return}const r=await fetch('/api/club/logo',{method:'POST',headers:{'Authorization':'Bearer '+tok(),'Content-Type':f.type},body:f});const d=await r.json();log(d);loadProfile()}
