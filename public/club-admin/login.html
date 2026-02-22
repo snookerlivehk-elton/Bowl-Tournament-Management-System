@@ -3,6 +3,38 @@
 <title>球會後台（Club Admin）</title>
 <style>body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:16px}.card{border:1px solid #ddd;border-radius:8px;padding:12px;margin:12px 0}input,button{padding:10px;font-size:16px}button{cursor:pointer}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left}#log{background:#0b1020;color:#e8e8e8;border-radius:8px;padding:10px;white-space:pre-wrap}</style>
 <h2>球會後台（Club Admin）</h2>
+<div class="card" id="guide">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <b>操作教學</b>
+    <button onclick="toggleGuide()">收合/展開</button>
+  </div>
+  <ol style="margin-top:8px">
+    <li>登入：使用總後台生成的連結進入本頁；網址若包含 token 會自動登入。若未帶入，可將 token 貼到上方欄位，按「使用 Token」。</li>
+    <li>建立賽事（推薦新流程）：
+      <ul>
+        <li>在「賽事與階段」卡片輸入賽事名稱 → 建立賽事 → 在表格按「選取」。</li>
+        <li>新增階段：選擇「賽制」後，底下會顯示對應設定表單。</li>
+        <li>stepladder：設定 Seeds（人數）、每場局數、球道數、球道輪換；可選 single/double/team 與隊伍人數。</li>
+        <li>league：設定（單/雙）循環、球道輪換、對賽配對（循環/按上週排名）、每局勝/和/負積分、整場總分加成與上限、讓分（是否啟用與每局值）、參賽型態。</li>
+        <li>按「新增階段」後，在階段列表按「生成骨架」。stepladder 會建立占位場次；league 會標記為 planned（之後帶名單排程）。</li>
+      </ul>
+    </li>
+    <li>舊流程（模板）：仍可於「賽事模板」卡片使用「計算種子→指派」與骨架；適合單次的階梯淘汰。</li>
+    <li>比賽進行：打開 /api/m/:id 錄入每局分數，完成後按 P1勝/P2勝可自動推進（階梯賽）。</li>
+  </ol>
+  <div style="font-size:12px;opacity:.8">提示：本頁所有請求會自動帶入你的登入 Token，無需手動複製。</div>
+  <hr style="margin:10px 0">
+  <div>
+    <b>欄位說明（聯賽）</b>
+    <ul>
+      <li>循環次數：單/雙循環</li>
+      <li>球道輪換：sequential/蛇形（snake）/對陣輪換（rotate_by_pair）</li>
+      <li>對賽配對：round_robin 或 by_last_week_ranking</li>
+      <li>每局積分：勝/和/負；整場總分加成：若啟用，整場總分較高者額外得分；每場最高分：限制單場總得分上限（例：5 分）</li>
+      <li>讓分：每局固定讓分或不使用；可搭配 team 模式</li>
+    </ul>
+  </div>
+</div>
 <div class="card">
   <div><label>Token（若未帶入請貼上）</label><br><input id="tokenInput" style="width:100%"></div>
   <div style="margin-top:10px"><button onclick="useToken()">使用 Token</button> <span id="status">未登入</span></div>
@@ -301,4 +333,16 @@ function renderStageConfig(){
   document.getElementById('cfg-league').style.display=(f==='league')?'block':'none'
 }
 renderStageConfig()
+function toggleGuide(){
+  const g=document.getElementById('guide')
+  const hidden=g.getAttribute('data-hide')==='1'
+  if(hidden){
+    g.setAttribute('data-hide','0'); g.style.display='block'; localStorage.removeItem('club_guide_hide')
+  }else{
+    g.setAttribute('data-hide','1'); g.style.display='none'; localStorage.setItem('club_guide_hide','1')
+  }
+}
+if(localStorage.getItem('club_guide_hide')==='1'){
+  const g=document.getElementById('guide'); g.setAttribute('data-hide','1'); g.style.display='none'
+}
 </script>
