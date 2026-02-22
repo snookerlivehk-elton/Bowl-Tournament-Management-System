@@ -57,6 +57,41 @@ async function ensureClubTemplates() {
   }
 }
 
+async function ensureCompetitions() {
+  if (db.available()) {
+    await db.query(`create table if not exists competitions(
+      id serial primary key,
+      club_id integer not null,
+      name text not null,
+      status text default 'draft',
+      created_at timestamptz default now()
+    )`)
+    await db.query(`create table if not exists competition_stages(
+      id serial primary key,
+      competition_id integer not null,
+      seq integer not null,
+      name text not null,
+      format_type text not null,
+      lanes integer not null default 1,
+      frames_per_match integer not null default 1,
+      config jsonb,
+      advancement jsonb,
+      status text default 'draft',
+      created_at timestamptz default now()
+    )`)
+    await db.query(`create table if not exists stage_participants(
+      stage_id integer not null,
+      player_id integer not null
+    )`)
+    await db.query(`create table if not exists stage_matches(
+      stage_id integer not null,
+      match_id integer not null,
+      round_no integer,
+      slot_info jsonb
+    )`)
+  }
+}
+
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || ''
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''
 const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'change-me'
@@ -581,6 +616,80 @@ router.post('/club/templates/:tplId/assign-seeds', clubAuth, async (req, res) =>
     }
   }
   return res.json({ assigned: true, matchIds })
+})
+router.post('/players', async (req, res) => {
+router.post('/club/competitions', clubAuth, async (req, res) => {
+  const clubId = req.clubId
+  const { name } = req.body || {}
+  if (!name) return res.status(400).json({ error: 'name required' })
+  if (db.available()) {
+    try { await ensureCompetitions(); const r = await db.query('insert into competitions(club_id,name) values($1,$2) returning id,club_id,name,status,created_at', [clubId, name]); return res.status(201).json(r.rows[0]) } catch (e) { return res.status(500).json({ error: 'create competition failed' }) }
+  }
+  res.status(201).json({ id: Date.now(), club_id: clubId, name, status: 'draft', created_at: new Date().toISOString() })
+})
+
+router.get('/club/competitions', clubAuth, async (req, res) => {
+  const clubId = req.clubId
+  if (db.available()) {
+    try { await ensureCompetitions(); const r = await db.query('select id,club_id,name,status,created_at from competitions where club_id=$1 order by id desc', [clubId]); return res.json(r.rows) } catch (e) { return res.status(500).json({ error: 'list competitions failed' }) }
+  }
+  res.json([])
+})
+
+router.post('/club/competitions/:id/stages', clubAuth, async (req, res) => {
+  const clubId = req.clubId
+  const competitionId = parseInt(req.params.id, 10)
+  const { seq, name, formatType, lanes, framesPerMatch, config, advancement } = req.body || {}
+  if (!name || !formatType) return res.status(400).json({ error: 'name and formatType required' })
+  if (db.available()) {
+    try {
+      await ensureCompetitions()
+      const r = await db.query('insert into competition_stages(competition_id,seq,name,format_type,lanes,frames_per_match,config,advancement) values($1,$2,$3,$4,$5,$6,$7,$8) returning id,competition_id,seq,name,format_type,lanes,frames_per_match,config,advancement,status,created_at', [competitionId, seq || 1, name, formatType, lanes || 1, framesPerMatch || 1, config || null, advancement || null])
+      return res.status(201).json(r.rows[0])
+    } catch (e) {
+      return res.status(500).json({ error: 'create stage failed' })
+    }
+  }
+  res.status(201).json({ id: Date.now(), competition_id: competitionId, seq: seq || 1, name, format_type: formatType, lanes: lanes || 1, frames_per_match: framesPerMatch || 1, config: config || null, advancement: advancement || null, status: 'draft' })
+})
+
+router.get('/club/competitions/:id/stages', clubAuth, async (req, res) => {
+  const competitionId = parseInt(req.params.id, 10)
+  if (db.available()) {
+    try { await ensureCompetitions(); const r = await db.query('select id,competition_id,seq,name,format_type,lanes,frames_per_match,config,advancement,status,created_at from competition_stages where competition_id=$1 order by seq', [competitionId]); return res.json(r.rows) } catch (e) { return res.status(500).json({ error: 'list stages failed' }) }
+  }
+  res.json([])
+})
+
+router.post('/club/stages/:id/generate', clubAuth, async (req, res) => {
+  const clubId = req.clubId
+  const stageId = parseInt(req.params.id, 10)
+  if (db.available()) {
+    try {
+      await ensureCompetitions()
+      const r = await db.query('select competition_id, format_type, frames_per_match, lanes, config from competition_stages where id=$1', [stageId])
+      if (r.rowCount === 0) return res.status(404).json({ error: 'stage not found' })
+      const s = r.rows[0]
+      const frames = s.frames_per_match || 1
+      let ids = []
+      if (s.format_type === 'stepladder') {
+        const seeds = (s.config && s.config.seeds) ? Math.max(3, Number(s.config.seeds)) : 5
+        for (let i = 1; i < seeds; i++) {
+          const mr = await db.query('insert into matches(competition_id,club_id,player_ids,frames_per_match,status) values($1,$2,$3,$4,$5) returning id', [s.competition_id, clubId, JSON.stringify([]), frames, 'scheduled'])
+          ids.push(mr.rows[0].id)
+          await db.query('insert into stage_matches(stage_id,match_id,round_no,slot_info) values($1,$2,$3,$4)', [stageId, mr.rows[0].id, i, JSON.stringify({ lane: null })])
+        }
+      } else {
+        ids = []
+      }
+      const cfg = Object.assign({}, s.config || {}, { generated_match_ids: ids })
+      await db.query('update competition_stages set config=$2, status=$3 where id=$1', [stageId, cfg, 'generated'])
+      return res.status(201).json({ matchIds: ids })
+    } catch (e) {
+      return res.status(500).json({ error: 'stage generate failed' })
+    }
+  }
+  res.status(201).json({ matchIds: [] })
 })
 router.post('/players', async (req, res) => {
   const { name, nationality, photoUrl } = req.body || {}

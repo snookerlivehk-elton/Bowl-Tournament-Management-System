@@ -55,6 +55,40 @@ create table if not exists club_match_templates (
   created_at timestamptz default now()
 );
 
+create table if not exists competitions (
+  id serial primary key,
+  club_id integer not null,
+  name text not null,
+  status text default 'draft',
+  created_at timestamptz default now()
+);
+
+create table if not exists competition_stages (
+  id serial primary key,
+  competition_id integer not null,
+  seq integer not null,
+  name text not null,
+  format_type text not null,
+  lanes integer not null default 1,
+  frames_per_match integer not null default 1,
+  config jsonb,
+  advancement jsonb,
+  status text default 'draft',
+  created_at timestamptz default now()
+);
+
+create table if not exists stage_participants (
+  stage_id integer not null,
+  player_id integer not null
+);
+
+create table if not exists stage_matches (
+  stage_id integer not null,
+  match_id integer not null,
+  round_no integer,
+  slot_info jsonb
+);
+
 create table if not exists matches (
   id serial primary key,
   competition_id int,
