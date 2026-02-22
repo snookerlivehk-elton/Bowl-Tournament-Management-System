@@ -2,20 +2,65 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BTMS Frontend</title>
 <style>
-body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px}
-.card{border:1px solid #ddd;border-radius:8px;padding:16px;max-width:720px}
-ul{line-height:1.9}
-a{color:#1558d6;text-decoration:none}
+:root{
+  color-scheme: light dark;
+  --bg: #f6f8fa;
+  --fg: #1f2328;
+  --card-bg: #ffffff;
+  --border: #d0d7de;
+  --link: #0969da;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg: #0b1020;
+    --fg: #e6edf3;
+    --card-bg: #161b22;
+    --border: #30363d;
+    --link: #58a6ff;
+  }
+}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;
+  background:var(--bg);
+  color:var(--fg);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+}
+.card{
+  background:var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:20px 24px;
+  width:min(760px, 92vw);
+  box-shadow:0 2px 12px rgba(0,0,0,.06);
+}
+ul{line-height:1.9;margin:8px 0 0 0;padding-left:18px}
+a{color:var(--link);text-decoration:none}
 a:hover{text-decoration:underline}
+.muted{opacity:.78}
 </style>
 <div class="card">
-  <h2>Bowl Tournament Management System</h2>
-  <p>這是前端入口，常用連結：</p>
+  <h2 style="margin:0 0 6px 0">Bowl Tournament Management System</h2>
+  <div class="muted" style="margin-bottom:12px">前端入口（支援亮/暗色主題）</div>
   <ul>
     <li><a href="/super-admin/index.html">總後台（Super Admin）</a></li>
     <li><a href="/club-admin/login.html">球會後台（Club Admin）</a></li>
     <li><a href="/">Backend API 根目錄</a></li>
   </ul>
-  <p id="ver"></p>
+  <p id="ver" class="muted" style="margin-top:12px"></p>
+  <div class="muted" style="font-size:13px;margin-top:8px">
+    若看不到內容，請確認後端 btms.up.railway.app 正常運作
+  </div>
+  <div class="muted" style="font-size:12px;margin-top:6px">
+    若顯示反白或對比不足，請檢查瀏覽器「深色模式」設定
+  </div>
+  <div class="muted" style="font-size:12px;margin-top:6px">
+    本頁已設置亮/暗色變數，確保文字在任一主題均可讀
+  </div>
+  <noscript><div style="margin-top:8px;color:#c00">你的瀏覽器停用了 JavaScript，部分功能可能無法運作</div></noscript>
+  <script type="module" src="/src/main.js"></script>
 </div>
-<script type="module" src="/src/main.js"></script>
