@@ -413,11 +413,13 @@ async function openLeagueTools(id){
   document.getElementById('stageLeagueTools').hidden=false
   document.getElementById('seedStageId').value=String(id)
   const ps=await authedFetch('/api/club/stages/'+id+'/participants',{method:'GET'})
-  document.getElementById('lgPlayers').value=(ps||[]).join('\\n')
+  document.getElementById('lgPlayers').value=(ps||[]).join('\n')
 }
 async function saveParticipants(){
   const id=Number(document.getElementById('seedStageId').value||'0')
-  const ids=(document.getElementById('lgPlayers').value||'').split(/\\r?\\n/).map(x=>Number(x.trim())).filter(Boolean)
+  const raw=(document.getElementById('lgPlayers').value||'')
+  const normalized=raw.replace(/\\r?\\n/g,'\n') // 將字面「\n」轉為真正換行
+  const ids=normalized.split(/\r?\n/).map(x=>Number(x.trim())).filter(v=>Number.isFinite(v)&&v>0)
   const d=await authedFetch('/api/club/stages/'+id+'/participants',{method:'POST',body:JSON.stringify({playerIds:ids})})
   log(d)
 }
@@ -431,7 +433,7 @@ async function mockParticipants(){
   const count=Number(document.getElementById('lgMockCount').value||'4')
   const base=Number(document.getElementById('lgMockBase').value||'1001')
   const d=await authedFetch('/api/club/stages/'+id+'/participants/mock',{method:'POST',body:JSON.stringify({count,base})})
-  log(d); document.getElementById('lgPlayers').value=(d.playerIds||[]).join('\\n')
+  log(d); document.getElementById('lgPlayers').value=(d.playerIds||[]).join('\n')
 }
 async function loadSchedule(){
   const id=Number(document.getElementById('seedStageId').value||'0')
