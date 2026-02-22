@@ -794,11 +794,23 @@ router.post('/club/stages/:id/schedule/round-robin', clubAuth, async (req, res) 
       const sr = await db.query('select competition_id, lanes, frames_per_match, config from competition_stages where id=$1', [stageId])
       if (sr.rowCount === 0) return res.status(404).json({ error: 'stage not found' })
       const s = sr.rows[0]
-      const lanes = s.lanes || 1
+      // lanes 必為雙數，至少 2
+      const lanesRaw = s.lanes || 1
+      const lanes = (lanesRaw % 2 === 0) ? Math.max(2, lanesRaw) : Math.max(2, lanesRaw + 1)
       const frames = s.frames_per_match || 4
       const cfg = s.config || {}
       const roundsCfg = Number(cfg.rounds || 1)
       const lanePolicy = cfg.lane_policy || 'sequential'
+      const body = req.body || {}
+      // 預設從今天起，每週固定日/時間；若提供 startDate/startTime 則用該時間起算
+      let startDate = null
+      try {
+        if (body.startDate) {
+          const t = body.startTime || '09:00'
+          startDate = new Date(`${body.startDate}T${t}:00Z`)
+          if (isNaN(startDate.getTime())) startDate = null
+        }
+      } catch (e) {}
       const pr = await db.query('select player_id from stage_participants where stage_id=$1 order by player_id', [stageId])
       const ids = pr.rows.map(x => Number(x.player_id))
       if (ids.length < 2) return res.status(400).json({ error: 'participants insufficient' })
@@ -806,21 +818,26 @@ router.post('/club/stages/:id/schedule/round-robin', clubAuth, async (req, res) 
       const fixtures = []
       for (let k = 0; k < roundsCfg; k++) fixtures.push(...baseFixtures)
       const createdIds = []
-      let slot = 0
       fixtures.forEach((pairs, rIdx) => {
         pairs.forEach((pair, i) => {
           const laneIndex = (lanePolicy === 'snake' && (rIdx % 2 === 1)) ? (lanes - 1 - (i % lanes)) : (i % lanes)
           const lane = 1 + laneIndex
           const timeSlot = Math.floor(i / lanes)
+          let dateStr = null
+          if (startDate) {
+            const d = new Date(startDate.getTime())
+            d.setUTCDate(d.getUTCDate() + (7 * rIdx))
+            dateStr = d.toISOString()
+          }
           // create match
-          createdIds.push({ pair, round: rIdx + 1, lane, slot: timeSlot })
+          createdIds.push({ pair, round: rIdx + 1, lane, slot: timeSlot, date: dateStr })
         })
       })
       const matchIds = []
       for (const m of createdIds) {
         const mr = await db.query('insert into matches(competition_id,club_id,player_ids,frames_per_match,status) values($1,$2,$3,$4,$5) returning id', [s.competition_id, clubId, JSON.stringify(m.pair), frames, 'scheduled'])
         matchIds.push(mr.rows[0].id)
-        await db.query('insert into stage_matches(stage_id,match_id,round_no,slot_info) values($1,$2,$3,$4)', [stageId, mr.rows[0].id, m.round, JSON.stringify({ lane: m.lane, slot: m.slot })])
+        await db.query('insert into stage_matches(stage_id,match_id,round_no,slot_info) values($1,$2,$3,$4)', [stageId, mr.rows[0].id, m.round, JSON.stringify({ lane: m.lane, slot: m.slot, date: m.date })])
       }
       const cfg2 = Object.assign({}, cfg, { schedule_status: 'generated', rr_rounds: fixtures.length })
       await db.query('update competition_stages set config=$2, status=$3 where id=$1', [stageId, cfg2, 'generated'])
@@ -904,11 +921,59 @@ router.get('/club/stages/:id/standings', clubAuth, async (req, res) => {
         agg.get(p1).matches++; agg.get(p2).matches++
       }
       const list = Array.from(agg.values())
+      // 排名：Points → Total Pinfall → Wins → （可再擴 Head-to-head）
       list.sort((a,b)=> b.points - a.points || b.pinfall - a.pinfall || b.frames_w - a.frames_w)
       list.forEach((x,i)=> x.rank = i+1)
       return res.json(list)
     } catch (e) {
       return res.status(500).json({ error: 'standings failed' })
+    }
+  }
+  res.json([])
+})
+
+router.get('/club/stages/:id/stats', clubAuth, async (req, res) => {
+  const stageId = parseInt(req.params.id, 10)
+  if (db.available()) {
+    try {
+      await ensureCompetitions()
+      const mr = await db.query('select match_id from stage_matches where stage_id=$1', [stageId])
+      const matchIds = mr.rows.map(x => x.match_id)
+      if (matchIds.length === 0) return res.json([])
+      const mrows = await db.query('select id, player_ids from matches where id = any($1)', [matchIds])
+      const playersByMatch = new Map(mrows.rows.map(x => [x.id, x.player_ids || []]))
+      const fr = await db.query('select match_id, frame_no, scores from frames where match_id = any($1) order by match_id, frame_no', [matchIds])
+      const stats = new Map()
+      function ensure(p){ if(!stats.has(p)) stats.set(p,{ playerId:p, pinfall_total:0, games:0, matches:0, best_match_total:0, best_frame_score:0 }) }
+      const framesByMatch = new Map()
+      for (const row of fr.rows) {
+        if (!framesByMatch.has(row.match_id)) framesByMatch.set(row.match_id, [])
+        framesByMatch.get(row.match_id).push(row)
+      }
+      for (const mid of matchIds) {
+        const pids = playersByMatch.get(mid) || []
+        if (pids.length < 2) continue
+        const frames = framesByMatch.get(mid) || []
+        const totals = [0,0]
+        frames.forEach(f=>{
+          const s=f.scores||{}
+          const a=Number(s.p1||0), b=Number(s.p2||0)
+          totals[0]+=a; totals[1]+=b
+          ensure(pids[0]); ensure(pids[1])
+          if (a>stats.get(pids[0]).best_frame_score) stats.get(pids[0]).best_frame_score=a
+          if (b>stats.get(pids[1]).best_frame_score) stats.get(pids[1]).best_frame_score=b
+          stats.get(pids[0]).pinfall_total+=a; stats.get(pids[1]).pinfall_total+=b
+          stats.get(pids[0]).games++; stats.get(pids[1]).games++
+        })
+        ensure(pids[0]); ensure(pids[1])
+        if (totals[0]>stats.get(pids[0]).best_match_total) stats.get(pids[0]).best_match_total=totals[0]
+        if (totals[1]>stats.get(pids[1]).best_match_total) stats.get(pids[1]).best_match_total=totals[1]
+        stats.get(pids[0]).matches++; stats.get(pids[1]).matches++
+      }
+      const list = Array.from(stats.values()).map(x=>Object.assign(x,{ average_per_frame: x.games? (x.pinfall_total/x.games): 0 }))
+      return res.json(list)
+    } catch (e) {
+      return res.status(500).json({ error: 'stats failed' })
     }
   }
   res.json([])

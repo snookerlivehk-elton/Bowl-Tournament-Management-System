@@ -172,9 +172,12 @@
       <textarea id="lgPlayers" rows="6" style="width:100%" placeholder="12&#10;34&#10;57&#10;..."></textarea>
       <div style="margin-top:6px">
         <button onclick="saveParticipants()">儲存參賽名單</button>
+        <span style="margin-left:6px">開始日期</span> <input id="lgStartDate" type="date">
+        <span>開球時間</span> <input id="lgStartTime" type="time" value="09:00">
         <button onclick="generateLeagueSchedule()">生成聯賽賽程</button>
         <button onclick="loadSchedule()">查看賽程</button>
         <button onclick="loadStandings()">查看積分榜</button>
+        <button onclick="loadStats()">查看個人統計</button>
       </div>
       <div style="margin-top:6px">
         <label>沒有 playerId？快速產生測試名單</label>
@@ -188,7 +191,7 @@
     <div style="margin-top:10px">
       <h5>賽程</h5>
       <table>
-        <thead><tr><th>Round</th><th>Match</th><th>Lane</th><th>Slot</th><th>對陣</th><th>操作</th></tr></thead>
+        <thead><tr><th>Round</th><th>Match</th><th>Lane</th><th>Slot / Date</th><th>對陣</th><th>操作</th></tr></thead>
         <tbody id="scheduleTable"></tbody>
       </table>
     </div>
@@ -197,6 +200,13 @@
       <table>
         <thead><tr><th>名次</th><th>Player</th><th>Points</th><th>Matches</th><th>Frames W-D-L</th><th>Pinfall</th></tr></thead>
         <tbody id="standingsTable"></tbody>
+      </table>
+    </div>
+    <div style="margin-top:10px">
+      <h5>個人統計</h5>
+      <table>
+        <thead><tr><th>Player</th><th>Best Match</th><th>Best Frame</th><th>Total Pin</th><th>Avg/Frame</th><th>Matches</th><th>Games</th></tr></thead>
+        <tbody id="statsTable"></tbody>
       </table>
     </div>
   </div>
@@ -425,7 +435,10 @@ async function saveParticipants(){
 }
 async function generateLeagueSchedule(){
   const id=Number(document.getElementById('seedStageId').value||'0')
-  const d=await authedFetch('/api/club/stages/'+id+'/schedule/round-robin',{method:'POST'})
+  const startDate=(document.getElementById('lgStartDate')&&document.getElementById('lgStartDate').value)||                                                                 null
+  const startTime=(document.getElementById('lgStartTime')&&document.getElementById('lgStartTime').value)||'09:00'
+  const payload = startDate ? { startDate, startTime } : {}
+  const d=await authedFetch('/api/club/stages/'+id+'/schedule/round-robin',{method:'POST',body:JSON.stringify(payload)})
   log(d); loadSchedule()
 }
 async function mockParticipants(){
@@ -442,9 +455,10 @@ async function loadSchedule(){
   for(const m of list){
     const lane=(m.slot_info&&m.slot_info.lane)||''
     const slot=(m.slot_info&&m.slot_info.slot)!=null?m.slot_info.slot:''
+    const date=(m.slot_info&&m.slot_info.date)? new Date(m.slot_info.date).toLocaleString(): ''
     const vs=(m.player_ids||[]).join(' vs ')
     const tr=document.createElement('tr')
-    tr.innerHTML=`<td>${m.round_no||''}</td><td>#${m.match_id}</td><td>${lane}</td><td>${slot}</td><td>${vs}</td><td><a href="/api/m/${m.match_id}" target="_blank">打開</a></td>`
+    tr.innerHTML=`<td>${m.round_no||''}</td><td>#${m.match_id}</td><td>${lane}</td><td>${slot}${date?(' / '+date):''}</td><td>${vs}</td><td><a href="/api/m/${m.match_id}" target="_blank">打開</a></td>`
     tb.appendChild(tr)
   }
 }
@@ -455,6 +469,16 @@ async function loadStandings(){
   for(const s of list){
     const tr=document.createElement('tr')
     tr.innerHTML=`<td>${s.rank}</td><td>${s.playerId}</td><td>${s.points}</td><td>${s.matches}</td><td>${s.frames_w}-${s.frames_d}-${s.frames_l}</td><td>${s.pinfall}</td>`
+    tb.appendChild(tr)
+  }
+}
+async function loadStats(){
+  const id=Number(document.getElementById('seedStageId').value||'0')
+  const list=await authedFetch('/api/club/stages/'+id+'/stats',{method:'GET'})
+  const tb=document.getElementById('statsTable'); tb.innerHTML=''
+  for(const s of list){
+    const tr=document.createElement('tr')
+    tr.innerHTML=`<td>${s.playerId}</td><td>${s.best_match_total}</td><td>${s.best_frame_score}</td><td>${s.pinfall_total}</td><td>${(s.average_per_frame||0).toFixed(2)}</td><td>${s.matches}</td><td>${s.games}</td>`
     tb.appendChild(tr)
   }
 }
