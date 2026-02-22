@@ -61,12 +61,45 @@
     </div>
   </div>
 </div>
+<div class="card" id="competitions" style="display:none">
+  <h3>賽事與階段</h3>
+  <div class="row">
+    <div><label>賽事名稱</label><br><input id="compName"></div>
+    <div style="align-self:end"><button onclick="createCompetition()">建立賽事</button></div>
+  </div>
+  <div style="margin-top:10px">
+    <table>
+      <thead><tr><th>ID</th><th>名稱</th><th>狀態</th><th>建立</th><th>操作</th></tr></thead>
+      <tbody id="compTable"></tbody>
+    </table>
+  </div>
+  <div style="margin-top:14px">
+    <h4>新增階段</h4>
+    <div class="row">
+      <div><label>賽事ID</label><br><input id="stageCompId" placeholder="從上表選取後填入"></div>
+      <div><label>順序</label><br><input id="stageSeq" type="number" min="1" value="1"></div>
+      <div><label>名稱</label><br><input id="stageName" placeholder="例如 階段一"></div>
+      <div><label>賽制</label><br><select id="stageFormat"><option value="stepladder">stepladder</option><option value="league">league</option></select></div>
+      <div><label>球道數</label><br><input id="stageLanes" type="number" min="1" value="8"></div>
+      <div><label>每場局數</label><br><input id="stageFrames" type="number" min="1" value="12"></div>
+      <div><label>Seeds/或每制參數</label><br><input id="stageSeeds" type="number" min="3" value="5"></div>
+    </div>
+    <div style="margin-top:8px"><button onclick="createStage()">新增階段</button></div>
+  </div>
+  <div style="margin-top:10px">
+    <h4>階段列表</h4>
+    <table>
+      <thead><tr><th>ID</th><th>Seq</th><th>名稱</th><th>賽制</th><th>狀態</th><th>操作</th></tr></thead>
+      <tbody id="stageTable"></tbody>
+    </table>
+  </div>
+</div>
 <div class="card"><div id="log">等待操作…</div></div>
 <script>
 function log(x){document.getElementById('log').textContent=(typeof x==='string')?x:JSON.stringify(x,null,2)}
 function tok(){return localStorage.getItem('club_token')||''}
 function setTok(t){localStorage.setItem('club_token',t)}
-function updateUI(){const t=tok();document.getElementById('status').textContent=t?'已登入':'未登入';document.getElementById('profile').style.display=t?'block':'none';document.getElementById('logo').style.display=t?'block':'none';document.getElementById('templates').style.display=t?'block':'none'}
+function updateUI(){const t=tok();document.getElementById('status').textContent=t?'已登入':'未登入';document.getElementById('profile').style.display=t?'block':'none';document.getElementById('logo').style.display=t?'block':'none';document.getElementById('templates').style.display=t?'block':'none';document.getElementById('competitions').style.display=t?'block':'none'}
 function useToken(){const t=document.getElementById('tokenInput').value.trim();if(!t){log('請貼上 token');return}setTok(t);updateUI();loadProfile()}
 async function authedFetch(url,opts){const h=Object.assign({},(opts&&opts.headers)||{}, {'Authorization':'Bearer '+tok(),'Content-Type':'application/json'});const r=await fetch(url,Object.assign({},opts||{}, {headers:h}));if(!r.ok){const txt=await r.text();try{log(JSON.parse(txt))}catch{log(txt)};throw new Error('request failed')}return r.json()}
 async function loadProfile(){const d=await authedFetch('/api/club/profile',{method:'GET'});document.getElementById('name').value=d.name||'';document.getElementById('region').value=d.region||'';document.getElementById('city').value=d.city||'';document.getElementById('address').value=d.address||'';document.getElementById('contactName').value=d.contact_name||'';document.getElementById('contactPhone').value=d.contact_phone||'';document.getElementById('contactEmail').value=d.contact_email||'';if(d.logo_url){document.getElementById('logoPreview').src=d.logo_url}}
@@ -143,6 +176,59 @@ async function assignSeeds(){
   const d=await authedFetch('/api/club/templates/'+tplId+'/assign-seeds',{method:'POST',body:JSON.stringify({matchIds:mids,seeds})})
   log(d)
 }
+async function loadCompetitions(){
+  const list=await authedFetch('/api/club/competitions',{method:'GET'})
+  const tbody=document.getElementById('compTable');tbody.innerHTML=''
+  for(const c of list){
+    const tr=document.createElement('tr')
+    const payload=encodeURIComponent(JSON.stringify(c))
+    tr.innerHTML=`<td>${c.id}</td><td>${c.name}</td><td>${c.status}</td><td>${c.created_at||''}</td><td><button onclick="pickCompetition('${payload}')">選取</button></td>`
+    tbody.appendChild(tr)
+  }
+}
+let currentCompetitionId = null
+function pickCompetition(enc){
+  const c=JSON.parse(decodeURIComponent(enc))
+  currentCompetitionId=c.id
+  document.getElementById('stageCompId').value=String(c.id)
+  loadStages()
+  log({competition:c})
+}
+async function createCompetition(){
+  const name=document.getElementById('compName').value.trim()
+  if(!name){log('名稱必填');return}
+  const d=await authedFetch('/api/club/competitions',{method:'POST',body:JSON.stringify({name})})
+  log(d); loadCompetitions()
+}
+async function createStage(){
+  const cid=Number(document.getElementById('stageCompId').value||'0')
+  if(!cid){log('請先選取賽事');return}
+  const body={
+    seq:Number(document.getElementById('stageSeq').value||'1'),
+    name:document.getElementById('stageName').value.trim()||'階段',
+    formatType:document.getElementById('stageFormat').value,
+    lanes:Number(document.getElementById('stageLanes').value||'1'),
+    framesPerMatch:Number(document.getElementById('stageFrames').value||'1'),
+    config:{seeds:Number(document.getElementById('stageSeeds').value||'5')}
+  }
+  const d=await authedFetch('/api/club/competitions/'+cid+'/stages',{method:'POST',body:JSON.stringify(body)})
+  log(d); loadStages()
+}
+async function loadStages(){
+  const cid=Number(document.getElementById('stageCompId').value||'0')
+  if(!cid){return}
+  const list=await authedFetch('/api/club/competitions/'+cid+'/stages',{method:'GET'})
+  const tbody=document.getElementById('stageTable');tbody.innerHTML=''
+  for(const s of list){
+    const tr=document.createElement('tr')
+    tr.innerHTML=`<td>${s.id}</td><td>${s.seq}</td><td>${s.name}</td><td>${s.format_type}</td><td>${s.status}</td><td><button onclick="generateStage(${s.id})">生成骨架</button></td>`
+    tbody.appendChild(tr)
+  }
+}
+async function generateStage(id){
+  const d=await authedFetch('/api/club/stages/'+id+'/generate',{method:'POST'})
+  log(d); loadStages()
+}
 // 支援兩種帶入方式：#token=... 或 ?token=...
 if(location.hash.startsWith('#token=')){const t=location.hash.slice(7);document.getElementById('tokenInput').value=t;setTok(t);updateUI();loadProfile()}
 else if(new URLSearchParams(location.search).get('token')){const t=new URLSearchParams(location.search).get('token');document.getElementById('tokenInput').value=t;setTok(t);updateUI();loadProfile()}
@@ -154,4 +240,5 @@ window.createTemplate = createTemplate
 window.enableTemplate = enableTemplate
 window.deleteTemplate = deleteTemplate
 if(tok()){try{loadTemplates()}catch(e){}}
+if(tok()){try{loadCompetitions()}catch(e){}}
 </script>
