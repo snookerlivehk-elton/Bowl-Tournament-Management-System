@@ -3,6 +3,7 @@
 <title>球會後台（Club Admin）</title>
 <style>body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:16px}.card{border:1px solid #ddd;border-radius:8px;padding:12px;margin:12px 0}input,button{padding:10px;font-size:16px}button{cursor:pointer}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left}#log{background:#0b1020;color:#e8e8e8;border-radius:8px;padding:10px;white-space:pre-wrap}</style>
 <h2>球會後台（Club Admin）</h2>
+<div id="nudge" style="display:none;position:fixed;top:10px;left:50%;transform:translateX(-50%);background:#2b6cb0;color:#fff;padding:8px 12px;border-radius:6px;z-index:9999;box-shadow:0 2px 10px rgba(0,0,0,.2);font-size:14px"></div>
 <div class="card" id="guide">
   <div style="display:flex;justify-content:space-between;align-items:center">
     <b>操作教學</b>
@@ -100,7 +101,7 @@
     </table>
   </div>
   <div style="margin-top:14px">
-    <h4>新增階段</h4>
+    <h4 id="stageFormAnchor">新增階段</h4>
     <div class="row">
       <div><label>賽事ID</label><br><input id="stageCompId" placeholder="系統自動帶入" readonly></div>
       <div><label>順序</label><br><input id="stageSeq" type="number" min="1" value="1"></div>
@@ -278,13 +279,21 @@ function pickCompetition(enc){
   currentCompetitionId=c.id
   document.getElementById('stageCompId').value=String(c.id)
   loadStages()
+  scrollToStageForm()
+  nudge('已選取賽事，請在下方新增階段')
   log({competition:c})
 }
 async function createCompetition(){
   const name=document.getElementById('compName').value.trim()
   if(!name){log('名稱必填');return}
   const d=await authedFetch('/api/club/competitions',{method:'POST',body:JSON.stringify({name})})
-  log(d); loadCompetitions()
+  log(d);
+  currentCompetitionId = d.id
+  document.getElementById('stageCompId').value=String(d.id)
+  await loadCompetitions()
+  await loadStages()
+  scrollToStageForm()
+  nudge('賽事已建立，已帶入賽事ID，請新增階段')
 }
 async function createStage(){
   const cid=Number(document.getElementById('stageCompId').value||'0')
@@ -325,6 +334,8 @@ async function createStage(){
   const d=await authedFetch('/api/club/competitions/'+cid+'/stages',{method:'POST',body:JSON.stringify(body)})
   log(d); loadStages()
 }
+function scrollToStageForm(){ const el=document.getElementById('stageFormAnchor'); if(el){ el.scrollIntoView({behavior:'smooth',block:'start'}) } }
+function nudge(msg){ const n=document.getElementById('nudge'); if(!n) return; n.textContent = msg; n.style.display='block'; clearTimeout(window.__nudgeTimer); window.__nudgeTimer=setTimeout(()=>{n.style.display='none'},3000) }
 async function loadStages(){
   const cid=Number(document.getElementById('stageCompId').value||'0')
   if(!cid){return}
